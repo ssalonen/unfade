@@ -1,0 +1,47 @@
+# Throwaway Immich for unfade's end-to-end tests: server, Valkey and Postgres from Immich's own
+# docker-compose.yml (v3.3.3), without machine learning, with no volumes kept between runs.
+# IMMICH_VERSION picks another server release; the test fixture brings this up and tears it down.
+name: unfade-e2e
+
+services:
+  immich-server:
+    image: ghcr.io/immich-app/immich-server:${IMMICH_VERSION:-v3.3.3}
+    environment:
+      DB_HOSTNAME: database
+      DB_USERNAME: postgres
+      DB_PASSWORD: postgres
+      DB_DATABASE_NAME: immich
+      REDIS_HOSTNAME: redis
+      IMMICH_MACHINE_LEARNING_ENABLED: "false"
+      TZ: UTC
+    ports:
+      - "127.0.0.1:${UNFADE_E2E_PORT:-22830}:2283"
+    depends_on:
+      redis:
+        condition: service_healthy
+      database:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:2283/api/server/ping || exit 1"]
+      interval: 5s
+      retries: 60
+
+  redis:
+    image: docker.io/valkey/valkey:9@sha256:c123e3715db63d06d4ad6964884037aa0d5d4d703939b9929954112889708e1d
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping || exit 1"]
+      interval: 2s
+      retries: 30
+
+  database:
+    image: ghcr.io/immich-app/postgres:14-vectorchord0.4.3-pgvectors0.2.0@sha256:bcf63357191b76a916ae5eb93464d65c07511da41e3bf7a8416db519b40b1c23
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_DB: immich
+      POSTGRES_INITDB_ARGS: "--data-checksums"
+    shm_size: 128mb
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d immich || exit 1"]
+      interval: 2s
+      retries: 60

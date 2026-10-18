@@ -1,0 +1,33 @@
+name: End-to-end (Immich)
+
+# unfade against a throwaway Immich in Docker, with Playwright spot checks of both web UIs.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      immich_version:
+        description: "Immich server image tag (default: the version pinned in e2e/docker-compose.yml)"
+        required: false
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      IMMICH_VERSION: ${{ inputs.immich_version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.14"
+      - run: uv sync --locked --group e2e
+      - run: uv run --group e2e playwright install --with-deps chromium
+      - run: uv run --group e2e pytest -v e2e
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-screenshots
+          path: e2e/artifacts/
+          if-no-files-found: ignore

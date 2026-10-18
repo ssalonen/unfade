@@ -1,0 +1,50 @@
+[project]
+name = "unfade"
+version = "0.1.0"
+description = "Colour correction for faded photos, for local folders and Immich: lossless 16-bit copies with the recipe embedded, and an archive of the originals"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.14"
+dependencies = [
+  "fastapi>=0.115,<1",
+  "uvicorn[standard]>=0.30,<1",
+  "jinja2>=3.1,<4",
+  "python-multipart>=0.0.9,<1",
+  "pillow-heif>=1.1,<2",
+  "numpy>=2,<3",
+  # Talks to Immich; the tests use it through TestClient.
+  "httpx>=0.27,<1",
+  # 16-bit TIFF/PNG input and lossless 16-bit JPEG XL / PNG output.
+  "imagecodecs>=2024.12",
+]
+
+[project.urls]
+Repository = "https://github.com/ssalonen/unfade"
+
+[project.scripts]
+unfade = "unfade.__main__:main"
+
+[dependency-groups]
+dev = [
+  "pytest>=8,<9",
+]
+# End-to-end tests against a throwaway Immich (uv run --group e2e pytest e2e).
+e2e = [
+  "pytest>=8,<9",
+  "playwright==1.56.0",
+]
+
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["unfade"]
+
+[tool.setuptools.package-data]
+unfade = ["static/*", "templates/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

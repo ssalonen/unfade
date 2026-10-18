@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="fi">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Värikorjaus — {{ source_label }}</title>
+  <link rel="stylesheet" href="/static/board.css?v={{ asset_version() }}">
+  <link rel="stylesheet" href="/static/unfade.css?v={{ asset_version() }}">
+</head>
+<body>
+<main class="page">
+  <p><a href="/">← Työt</a></p>
+  <h1>Värikorjaus</h1>
+  <p><strong>{{ source_label }}</strong> → <strong>{{ destination_label }}</strong> · {{ job['items']|length }} kuvaa</p>
+
+  <section id="groups" class="card" data-group-board data-save-url="/jobs/{{ job.id }}/grouping">
+    <h2>1. Järjestä värikorjausryhmät</h2>
+    {% if saved == 'grouping' %}<p class="saved" role="status">✓ Tallennettu</p>{% endif %}
+    <p class="hint">Ryhmä määrää korjausmenetelmän; jokainen kuva sovitetaan silti erikseen. Ehdotus erottaa kansiot ja selvästi poikkeavan kirkkauden tai värin, mutta kuva-aihekin voi selittää eron. Kun vedät valittua kuvaa, kaikki valitut kuvat sen lähtöryhmästä siirtyvät yhdessä. Muutokset tallennetaan yhdellä painalluksella.</p>
+    <div class="group-toolbar">
+      <strong id="selection-count">0 kuvaa valittu</strong>
+      <label>Siirrä valitut ryhmään<select id="move-target">{% for group in job.groups %}<option value="g-{{ group.id }}">{{ group.label }}</option>{% endfor %}</select></label>
+      <button type="button" id="move-selected" disabled>Siirrä valitut</button>
+      <button type="button" id="undo-group" class="secondary history" aria-label="Undo" title="Undo" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14 4 9l5-5M4 9h10a6 6 0 0 1 0 12h-2"/></svg> Undo</button>
+      <button type="button" id="redo-group" class="secondary history" aria-label="Redo" title="Redo" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 14 5-5-5-5M20 9H10a6 6 0 0 0 0 12h2"/></svg> Redo</button>
+      <form id="grouping-form" action="/jobs/{{ job.id }}/grouping" method="post"><input type="hidden" name="revision" value="{{ revision }}"><input type="hidden" name="state"><button id="save-grouping" disabled>Tallenna ryhmät</button></form>
+    </div>
+    <p id="group-status" role="status" aria-live="polite" class="hint"></p>
+    <div class="group-board" id="group-board">
+      {% for group in job.groups %}<section class="color-group" data-group-key="g-{{ group.id }}" data-group-label="{{ group.label }}" data-approved="{{ 1 if group.approved else 0 }}">
+        <header class="color-group-head"><span class="eyebrow">{% if group.approved %}Hyväksytty ryhmä{% else %}Värikorjausryhmä{% endif %} · {{ methods[group.method][0] }}</span><h3>{{ group.label }}</h3><p><span class="group-count">{{ members[group.id]|length }} diaa</span> · <span class="group-approval">{% if group.approved %}✓ hyväksytty{% else %}odottaa hyväksyntää{% endif %}</span></p><button type="button" class="delete-group" aria-label="Poista ryhmä {{ group.label }}" title="Poista ryhmä"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 11v6M14 11v6"/></svg></button></header>
+        <div class="group-body">
+          {% for index in members[group.id] %}{% set item = job['items'][index] %}
+          <article class="image-card" draggable="true" tabindex="0" data-item-id="{{ '%06d' % index }}" data-label="{{ item.name }}" data-note="{{ item.folder if item.folder != '.' else '' }}" data-original="/jobs/{{ job.id }}/preview/{{ index }}?view=original" data-preview="/jobs/{{ job.id }}/preview/{{ index }}">
+            <input type="checkbox" class="image-pick" aria-label="Valitse {{ item.name }}">
+            <button type="button" class="thumbnail-open" aria-label="Suurenna kuva {{ item.name }}"><img src="/jobs/{{ job.id }}/thumbnail/{{ index }}" alt="" loading="lazy"></button>
+            <div class="card-copy"><strong title="{{ item.name }}">{{ item.name }}</strong>{% if item.folder != '.' %}<span title="{{ item.folder }}">{{ item.folder }}</span>{% endif %}{% if item.adjustments %}<span>Omat säädöt</span>{% endif %}</div>
+          </article>
+          {% endfor %}
+          <p class="group-empty">Pudota kuvia tähän ryhmään</p>
+        </div>
+      </section>{% endfor %}
+      <section class="add-group-card" id="add-group-card"><h3>＋ Lisää ryhmä</h3><label>Uuden ryhmän nimi<input id="new-group-name" maxlength="100" placeholder="Esim. sisäkuvat"></label><button type="button" id="create-group">Lisää ryhmä</button></section>
+    </div>
+  </section>
+
+  <dialog id="image-modal" class="image-modal" aria-labelledby="modal-id"><header><strong id="modal-id"></strong><button type="button" id="modal-close" aria-label="Sulje suuri kuva">Sulje ✕</button></header><img id="modal-image" alt=""><div class="modal-meta"><span id="modal-group"></span></div><footer><p id="modal-note"></p><div><button type="button" id="modal-prev">← Edellinen</button><button type="button" id="modal-next">Seuraava →</button></div></footer></dialog>
+  <dialog id="delete-modal" class="delete-modal" aria-labelledby="delete-title"><h2 id="delete-title">Poista ryhmä</h2><p id="delete-explanation"></p><label>Siirrä kuvat ryhmään<select id="delete-target"></select></label><div class="dialog-actions"><button type="button" id="delete-cancel" class="secondary">Peruuta</button><button type="button" id="delete-confirm" class="danger">Siirrä kuvat ja poista ryhmä</button></div></dialog>
+
+  <section id="correction" class="card correction" data-requires-saved-grouping>
+    <h2>2. Korjaa ja hyväksy ryhmät</h2>
+    <p class="hint">Jokainen kuva sovitetaan erikseen. Ryhmä määrää korjausmenetelmän; kuvan omat säädöt lisätään sen päälle. Menetelmän vaihto tai kuvan säätö peruu ryhmän hyväksynnän.</p>
+    <div class="correction-layout">
+      <nav class="correction-groups" aria-label="Värikorjausryhmät">
+        {% for group in filled %}<a href="?group={{ group.id }}#correction" class="correction-group{% if group.id == current.id %} current{% endif %}"{% if group.id == current.id %} aria-current="true"{% endif %}>
+          <strong>{{ group.label }}</strong>
+          <span>{{ members[group.id]|length }} kuvaa · {{ methods[group.method][0] }}{% if group.method == 'fade' %} (oletus){% endif %}</span>
+          <span class="approval{% if group.approved %} done{% endif %}">{% if group.approved %}✓ Hyväksytty{% else %}Kesken{% endif %}</span>
+        </a>{% endfor %}
+      </nav>
+
+      <div class="correction-main" data-delta-e-url="/jobs/{{ job.id }}/groups/{{ current.id }}/delta-e?page={{ page }}">
+        <form class="method-form" action="/jobs/{{ job.id }}/groups/{{ current.id }}" method="post">
+          <label>Ryhmän nimi<input name="label" maxlength="100" value="{{ current.label }}" required></label>
+          <fieldset><legend>Korjausmenetelmä</legend>
+            <div class="method-options">{% for key, (name, description) in methods.items() %}
+              <label class="method-option"><input type="radio" name="method" value="{{ key }}"{% if current.method == key %} checked{% endif %} data-auto-submit><span><strong>{{ name }}{% if key == 'fade' %} · oletus{% endif %}</strong><small>{{ description }}</small><small class="delta-e">Muutos alkuperäiseen ΔE <b data-delta-e-average="{{ key }}">…</b></small></span></label>
+            {% endfor %}</div>
+          </fieldset>
+          <button class="secondary">Tallenna nimi ja menetelmä</button>
+        </form>
+
+        <div class="approve-row">
+          <p role="status">{% if saved == 'all' or approved_count == filled|length %}✓ Kaikki ryhmät hyväksytty. Vie korjatut kuvat alla.{% else %}Hyväksytty {{ approved_count }} / {{ filled|length }} ryhmää.{% endif %}</p>
+          <form action="/jobs/{{ job.id }}/groups/{{ current.id }}/approve" method="post"><button>{% if current.approved %}Hyväksy uudelleen{% else %}Hyväksy ryhmä{% endif %}</button></form>
+        </div>
+
+        <div class="view-toggles">
+          <label><input type="checkbox" id="show-original"> Näytä alkuperäinen</label>
+          <label><input type="checkbox" id="show-clipping" checked> Näytä leikkautuminen</label>
+          <span class="legend"><span class="swatch high"></span>magenta = 255 (valkoinen)</span>
+          <span class="legend"><span class="swatch low"></span>syaani = 0 (musta)</span>
+        </div>
+
+        <div class="correction-grid">{% for index in indexes %}{% set item = job['items'][index] %}
+          <a class="correction-card{% if index == selected %} selected{% endif %}" href="?group={{ current.id }}&amp;page={{ page }}&amp;item={{ index }}#correction"{% if index == selected %} aria-current="true"{% endif %}>
+            <canvas class="clip-canvas" data-src="/jobs/{{ job.id }}/preview/{{ index }}" data-original="/jobs/{{ job.id }}/preview/{{ index }}?view=original" role="img" aria-label="{{ item.name }} korjattu"></canvas>
+            <span class="card-meta"><code title="{{ item.name }}">{{ item.name }}</code><span class="clip-badge">…</span></span>
+            {% if item.adjustments or item.exported %}<span class="adjusted-note">{% if item.adjustments %}Omat säädöt{% endif %}{% if item.adjustments and item.exported %} · {% endif %}{% if item.exported %}✓ viety{% endif %}</span>{% endif %}
+          </a>
+        {% endfor %}</div>
+
+        {% if pages > 1 %}<nav class="pager" aria-label="Ryhmän sivut">
+          {% if page > 1 %}<a href="?group={{ current.id }}&amp;page={{ page - 1 }}#correction">← Edellinen</a>{% endif %}
+          <span>Sivu {{ page }} / {{ pages }}</span>
+          {% if page < pages %}<a href="?group={{ current.id }}&amp;page={{ page + 1 }}#correction">Seuraava →</a>{% endif %}
+        </nav>{% endif %}
+      </div>
+
+      <aside class="correction-detail" aria-label="Valittu kuva">
+        <h3><code>{{ entry.name }}</code> <small>{{ methods[current.method][0] }}</small></h3>
+        <div class="detail-image"><canvas id="detail-canvas" data-src="/jobs/{{ job.id }}/preview/{{ selected }}?view=corrected" data-original="/jobs/{{ job.id }}/preview/{{ selected }}?view=original" role="img" aria-label="{{ entry.name }} esikatselu"></canvas></div>
+        <svg class="histogram" viewBox="0 0 256 80" preserveAspectRatio="none" role="img" aria-label="Histogrammi kanavittain"><polyline data-channel="0"></polyline><polyline data-channel="1"></polyline><polyline data-channel="2"></polyline></svg>
+        <p class="clip-numbers">Leikkautuu 255: <strong id="clip-high">–</strong> · Leikkautuu 0: <strong id="clip-low">–</strong></p>
+        <table class="delta-e-table" id="delta-e-table" data-item-id="{{ selected }}">
+          <caption>Ero ΔE tälle kuvalle (ilman omia säätöjä)</caption>
+          <tbody>
+            <tr><th scope="rowgroup" colspan="2">Muutos alkuperäiseen</th></tr>
+            {% for key, (name, _) in methods.items() %}<tr{% if key == current.method %} class="current"{% endif %}><th scope="row">{{ name }}{% if key == current.method %} · käytössä{% endif %}</th><td data-delta-e-original="{{ key }}">…</td></tr>{% endfor %}
+          </tbody>
+          <tbody>
+            <tr><th scope="rowgroup" colspan="2">Menetelmien ero</th></tr>
+            {% for a, b in (('fade', 'gwg'), ('fade', 'pcs'), ('gwg', 'pcs')) %}<tr><th scope="row">{{ methods[a][0] }}–{{ methods[b][0] }}</th><td data-delta-e-pair="{{ a }}-{{ b }}">…</td></tr>{% endfor %}
+          </tbody>
+        </table>
+        <p class="hint delta-e-note">ΔE kertoo eron suuruuden, ei sitä, mikä on oikein. Alle ~2 on vaikea erottaa, yli ~10 näkyy selvästi.</p>
+        <form id="adjust-form" action="/jobs/{{ job.id }}/items/{{ selected }}" method="post">
+          <input type="hidden" name="page" value="{{ page }}">
+          <h4>Säädöt tälle kuvalle</h4>
+          {% for name, label in (('strength', 'Voimakkuus'), ('black', 'Mustapiste'), ('white', 'Valkopiste'), ('temperature', 'Lämpötila (sininen ↔ keltainen)')) %}
+          <label class="slider">{{ label }} <output for="adjust-{{ name }}">{{ adjustment[name] }}{% if name == 'strength' %} %{% endif %}</output><input type="range" id="adjust-{{ name }}" name="{{ name }}" min="{{ limits[name][0] }}" max="{{ limits[name][1] }}" step="{{ 5 if name == 'strength' else 1 }}" value="{{ adjustment[name] }}"></label>
+          {% endfor %}
+          <div class="adjust-actions"><button>Tallenna kuvan säädöt</button><button class="secondary" name="reset" value="1">Palauta automaattinen</button></div>
+          {% if saved == 'adjustments' %}<p class="saved" role="status">✓ Säädöt tallennettu. Ryhmä on hyväksyttävä uudelleen.</p>{% endif %}
+        </form>
+      </aside>
+    </div>
+  </section>
+
+  <section id="export" class="card" data-requires-saved-grouping data-export-url="/jobs/{{ job.id }}/export" data-export-state="{{ job.export.state }}">
+    <h2>3. Vie korjatut kuvat</h2>
+    <p>Kohde: <strong>{{ destination_label }}</strong>. {% if job.destination.kind == 'immich' %}Jokainen viety kuva ladataan Immichiin uutena kuvana; alkuperäinen jää ennalleen.{% else %}Samanniminen aiempi kopio kohteessa korvataan.{% endif %}</p>
+    <p>Vietäviä nyt: <strong>{{ pending }}</strong> / {{ job['items']|length }}. Vain hyväksyttyjen ryhmien kuvat viedään; kuvat, joiden menetelmä ja säädöt eivät ole muuttuneet edellisen viennin jälkeen, ohitetaan.</p>
+    <p id="export-status" role="status" aria-live="polite">{% if job.export.state == 'running' %}Vienti käynnissä: {{ job.export.done }} / {{ job.export.total }}{% elif job.export.state == 'done' %}✓ Vienti valmis {{ job.export.finished[:16]|replace('T', ' ') }}: kirjoitettu {{ job.export.written }}, ohitettu {{ job.export.skipped }}{% if job.export.waiting %}, odottaa hyväksyntää {{ job.export.waiting }}{% endif %}{% if job.export.errors %}, virheitä {{ job.export.errors|length }}{% endif %}.{% elif job.export.state == 'failed' %}Vienti epäonnistui.{% elif job.export.state == 'interrupted' %}Vienti keskeytyi ({{ job.export.done }} / {{ job.export.total }}). Käynnistä se uudelleen: jo viedyt kuvat ohitetaan, eikä kesken jääneestä tule kaksoiskappaletta.{% endif %}</p>
+    {% if job.export.warnings %}<ul class="export-warnings">{% for warning in job.export.warnings %}<li>{{ warning }}</li>{% endfor %}</ul>{% endif %}
+    {% if job.export.errors %}<ul class="export-errors" id="export-errors">{% for error in job.export.errors %}<li>{{ error }}</li>{% endfor %}</ul>{% endif %}
+    <form action="/jobs/{{ job.id }}/export" method="post" class="export-form">
+      <button{% if job.export.state == 'running' or not approved_count %} disabled{% endif %}>Vie hyväksytyt kuvat</button>
+      <label class="check"><input type="checkbox" name="force"> Vie myös muuttumattomat uudelleen</label>
+    </form>
+  </section>
+</main>
+<script src="/static/groups.js?v={{ asset_version() }}" defer></script>
+<script src="/static/correct.js?v={{ asset_version() }}" defer></script>
+<script src="/static/unfade.js?v={{ asset_version() }}" defer></script>
+</body></html>
