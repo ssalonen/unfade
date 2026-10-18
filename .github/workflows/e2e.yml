@@ -18,15 +18,15 @@ jobs:
     env:
       IMMICH_VERSION: ${{ inputs.immich_version }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.14"
       - run: uv sync --locked --group e2e
       - run: uv run --group e2e playwright install --with-deps chromium
       - run: uv run --group e2e pytest -v e2e
       - if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: e2e-screenshots
           path: e2e/artifacts/

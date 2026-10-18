@@ -12,13 +12,13 @@ jobs:
       matrix:
         python-version: ["3.14"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
         with:
           python-version: ${{ matrix.python-version }}
       # tests/test_preview_parity.py runs the browser preview code under Node.
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
-          node-version: 22
+          node-version: 24
       - run: uv sync --locked
       - run: uv run pytest -q
