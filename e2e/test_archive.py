@@ -10,7 +10,7 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 
-import httpx
+import httpx2
 import pytest
 
 from unfade import archive
@@ -93,10 +93,10 @@ def test_immich_reads_the_archived_sidecar_back(library, tmp_path, immich_url, a
     target = tmp_path / "archive"
     assert main(["archive", "--source", "immich-tag:Kuvat/K001", "--to", str(target)]) == 0
     headers = {"Authorization": f"Bearer {admin}"}
-    config = httpx.get(f"{immich_url}/api/system-config", headers=headers).json()
+    config = httpx2.get(f"{immich_url}/api/system-config", headers=headers).json()
     previous = config["metadata"]["faces"]["import"]
     config["metadata"]["faces"]["import"] = True
-    httpx.put(f"{immich_url}/api/system-config", headers=headers, json=config).raise_for_status()
+    httpx2.put(f"{immich_url}/api/system-config", headers=headers, json=config).raise_for_status()
     try:
         fresh = harness.new_account(immich_url, admin).client()
         original = target / "originals" / "K001-0001.jpg"
@@ -114,7 +114,7 @@ def test_immich_reads_the_archived_sidecar_back(library, tmp_path, immich_url, a
         assert [face["person"]["name"] for face in fresh.get("/faces", params={"id": asset_id}).json()] == ["Mummo"]
     finally:
         config["metadata"]["faces"]["import"] = previous
-        httpx.put(f"{immich_url}/api/system-config", headers=headers, json=config).raise_for_status()
+        httpx2.put(f"{immich_url}/api/system-config", headers=headers, json=config).raise_for_status()
 
 
 def test_archive_index_in_the_browser(library, tmp_path, artifacts):
@@ -122,7 +122,7 @@ def test_archive_index_in_the_browser(library, tmp_path, artifacts):
     target = tmp_path / "archive"
     assert main(["archive", "--source", "immich-tag:Kuvat/K001", "--to", str(target)]) == 0
     with playwright.sync_playwright() as p:
-        browser = p.chromium.launch()
+        browser = harness.launch_chromium(p)
         page = browser.new_page(viewport={"width": 1200, "height": 900})
         page.goto((target / "index.html").as_uri())
         page.screenshot(path=f"{artifacts}/index.png", full_page=True)

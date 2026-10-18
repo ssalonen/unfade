@@ -14,7 +14,7 @@ dependencies = [
   "pillow-heif>=1.1,<2",
   "numpy>=2,<3",
   # Talks to Immich; the tests use it through TestClient.
-  "httpx>=0.27,<1",
+  "httpx2>=2.13,<3",
   # 16-bit TIFF/PNG input and lossless 16-bit JPEG XL / PNG output.
   "imagecodecs>=2024.12",
 ]
@@ -27,12 +27,12 @@ unfade = "unfade.__main__:main"
 
 [dependency-groups]
 dev = [
-  "pytest>=8,<9",
+  "pytest>=9,<10",
 ]
 # End-to-end tests against a throwaway Immich (uv run --group e2e pytest e2e).
 e2e = [
-  "pytest>=8,<9",
-  "playwright==1.56.0",
+  "pytest>=9,<10",
+  "playwright==1.64.0",
 ]
 
 [build-system]

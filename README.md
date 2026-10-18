@@ -162,6 +162,7 @@ uv run --group e2e pytest e2e      # end-to-end, needs Docker
   - `IMMICH_VERSION=v2.5.0` tests another Immich version.
   - `UNFADE_E2E_KEEP=1` leaves the server running.
   - `UNFADE_E2E_URL` uses a running test server.
+  - `UNFADE_E2E_CHROMIUM` points Playwright at an existing Chromium instead of its own download.
   - Without Docker the tests are skipped.
 
 ## Translations

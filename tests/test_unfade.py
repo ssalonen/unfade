@@ -6,7 +6,7 @@ import json
 import re
 import struct
 
-import httpx
+import httpx2
 import imagecodecs
 import numpy as np
 import pytest
@@ -82,25 +82,25 @@ class FakeImmich:
         self.tag_calls = []
         self.by_content = {}
 
-    def handler(self, request: httpx.Request) -> httpx.Response:
+    def handler(self, request: httpx2.Request) -> httpx2.Response:
         assert request.headers["x-api-key"] == "secret"
         path, method = request.url.path.removeprefix("/api"), request.method
         if path == "/users/me":
-            return httpx.Response(200, json={"name": "Sami"})
+            return httpx2.Response(200, json={"name": "Sami"})
         if path == "/tags" and method == "GET":
-            return httpx.Response(200, json=self.tags)
+            return httpx2.Response(200, json=self.tags)
         if path == "/tags" and method == "PUT":
             value = json.loads(request.content)["tags"][0]
             tag = next((tag for tag in self.tags if tag["value"] == value), None)
             if not tag:
                 tag = {"id": f"tag-{len(self.tags)}", "name": value.rsplit("/", 1)[-1], "value": value}
                 self.tags.append(tag)
-            return httpx.Response(200, json=[tag])
+            return httpx2.Response(200, json=[tag])
         if path == "/albums":
             if "assetId" in request.url.params:
                 asset_id = request.url.params["assetId"]
-                return httpx.Response(200, json=[album for album in self.albums if asset_id in self.album_members.get(album["id"], set())])
-            return httpx.Response(200, json=self.albums)
+                return httpx2.Response(200, json=[album for album in self.albums if asset_id in self.album_members.get(album["id"], set())])
+            return httpx2.Response(200, json=self.albums)
         if path == "/assets/copy" and method == "PUT":
             body = json.loads(request.content)
             assert body["sidecar"] is False and body["albums"] and body["sharedLinks"] and body["stack"]
@@ -108,7 +108,7 @@ class FakeImmich:
             for members in self.album_members.values():
                 if body["sourceId"] in members:
                     members.add(body["targetId"])
-            return httpx.Response(204)
+            return httpx2.Response(204)
         match = re.fullmatch(r"/assets/([^/]+)", path)
         if match and method == "GET":
             asset = next((asset for asset in self.assets + self.uploaded if asset["id"] == match[1]), {"id": match[1], "type": "IMAGE"})
@@ -117,14 +117,14 @@ class FakeImmich:
                           if match[1] in record["assets"]), None)
             # Every original is in the source tag; copies get tags only from the export.
             tags = [{"id": "tag-source", "value": "Kuvat/K001"}] if match[1] in self.originals else []
-            return httpx.Response(200, json={**asset, "tags": tags, "isFavorite": False, "exifInfo": {"fileSizeInByte": 1, "exifImageWidth": 1}, "stack": stack, **self.details.get(match[1], {})})
+            return httpx2.Response(200, json={**asset, "tags": tags, "isFavorite": False, "exifInfo": {"fileSizeInByte": 1, "exifImageWidth": 1}, "stack": stack, **self.details.get(match[1], {})})
         if match and method == "PUT":
             self.updates[match[1]] = json.loads(request.content)
-            return httpx.Response(200, json={})
+            return httpx2.Response(200, json={})
         if path == "/view/folder/unique-paths":
-            return httpx.Response(200, json=["/photos/vanhat"])
+            return httpx2.Response(200, json=["/photos/vanhat"])
         if path == "/view/folder":
-            return httpx.Response(200, json=[asset for asset in self.assets if asset["originalPath"].startswith(request.url.params["path"] + "/")])
+            return httpx2.Response(200, json=[asset for asset in self.assets if asset["originalPath"].startswith(request.url.params["path"] + "/")])
         if path == "/search/metadata":
             body = json.loads(request.content)
             self.searches.append(body)
@@ -136,14 +136,14 @@ class FakeImmich:
             found = [asset for asset in self.assets + self.uploaded if asset["id"] in members and asset["id"] not in self.trashed]
             # Two pages: the first answers with a v3.2 cursor, the second with nothing more.
             if "cursor" in body:
-                return httpx.Response(200, json={"albums": {}, "assets": {"items": found[1:], "nextCursor": None, "nextPage": None}})
-            return httpx.Response(200, json={"albums": {}, "assets": {"items": found[:1], "nextCursor": "next" if len(found) > 1 else None, "nextPage": None}})
+                return httpx2.Response(200, json={"albums": {}, "assets": {"items": found[1:], "nextCursor": None, "nextPage": None}})
+            return httpx2.Response(200, json={"albums": {}, "assets": {"items": found[:1], "nextCursor": "next" if len(found) > 1 else None, "nextPage": None}})
         match = re.fullmatch(r"/assets/([^/]+)/thumbnail", path)
         if match:
-            return httpx.Response(200, content=self.originals[match[1]])
+            return httpx2.Response(200, content=self.originals[match[1]])
         match = re.fullmatch(r"/assets/([^/]+)/original", path)
         if match:
-            return httpx.Response(200, content=self.originals[match[1]])
+            return httpx2.Response(200, content=self.originals[match[1]])
         if path == "/assets" and method == "POST":
             fields = dict(re.findall(rb'name="(\w+)"\r\n\r\n([^\r]*)\r\n', request.content))
             assert fields[b"deviceId"] == b"unfade" and b"deviceAssetId" in fields
@@ -151,7 +151,7 @@ class FakeImmich:
             # Like Immich: the same bytes again are a duplicate of the asset already stored.
             known = self.by_content.get(hashlib.sha1(content).hexdigest())
             if known:
-                return httpx.Response(200, json={"id": known, "status": "duplicate"})
+                return httpx2.Response(200, json={"id": known, "status": "duplicate"})
             asset_id = f"new-{len(self.uploads)}"
             self.by_content[hashlib.sha1(content).hexdigest()] = asset_id
             self.contents.append(content)
@@ -159,26 +159,26 @@ class FakeImmich:
                                  "filename": re.search(rb'name="assetData"; filename="([^"]+)"', request.content)[1].decode()})
             self.uploaded.append({"id": asset_id, "type": "IMAGE", "originalFileName": self.uploads[-1]["filename"],
                                   "originalPath": f"/upload/{self.uploads[-1]['filename']}", "checksum": "", "isTrashed": False})
-            return httpx.Response(201, json={"id": asset_id, "status": "created"})
+            return httpx2.Response(201, json={"id": asset_id, "status": "created"})
         if path == "/tags/assets" and method == "PUT":
             body = json.loads(request.content)
             for tag_id in body["tagIds"]:
                 self.tagged.setdefault(tag_id, []).extend(body["assetIds"])
             self.tag_calls.append(body)
-            return httpx.Response(200, json={"count": len(body["tagIds"]) * len(body["assetIds"])})
+            return httpx2.Response(200, json={"count": len(body["tagIds"]) * len(body["assetIds"])})
         match = re.fullmatch(r"/tags/([^/]+)/assets", path)
         if match:
             self.tagged.setdefault(match[1], []).extend(json.loads(request.content)["ids"])
-            return httpx.Response(200, json=[])
+            return httpx2.Response(200, json=[])
         match = re.fullmatch(r"/assets/([^/]+)/metadata", path)
         if match and method == "GET":
-            return httpx.Response(200, json=[{"key": key, "value": value} for key, value in self.metadata.get(match[1], {}).items()])
+            return httpx2.Response(200, json=[{"key": key, "value": value} for key, value in self.metadata.get(match[1], {}).items()])
         if match and method == "PUT":
             if not self.metadata_supported:
-                return httpx.Response(400, json={"message": "key must be one of: mobile-app"})
+                return httpx2.Response(400, json={"message": "key must be one of: mobile-app"})
             for entry in json.loads(request.content)["items"]:
                 self.metadata.setdefault(match[1], {})[entry["key"]] = entry["value"]
-            return httpx.Response(200, json=[])
+            return httpx2.Response(200, json=[])
         if path == "/stacks":
             named = json.loads(request.content)["assetIds"]
             self.stacks.append(named)
@@ -191,23 +191,23 @@ class FakeImmich:
                 record["assets"] -= members
             stack_id = f"stack-{len(self.stacks)}"
             self.stack_records[stack_id] = {"primary": named[0], "assets": members}
-            return httpx.Response(201, json={"id": stack_id, "primaryAssetId": named[0], "assets": [{"id": member} for member in sorted(members)]})
+            return httpx2.Response(201, json={"id": stack_id, "primaryAssetId": named[0], "assets": [{"id": member} for member in sorted(members)]})
         match = re.fullmatch(r"/stacks/([^/]+)/assets/([^/]+)", path)
         if match and method == "DELETE":
             self.stack_records[match[1]]["assets"].discard(match[2])
             self.unstacked.append(match[2])
-            return httpx.Response(204)
+            return httpx2.Response(204)
         if path == "/assets" and method == "DELETE":
             body = json.loads(request.content)
             assert body["force"] is False
             self.trashed.extend(body["ids"])
-            return httpx.Response(204)
+            return httpx2.Response(204)
         match = re.fullmatch(r"/albums/([^/]+)/assets", path)
         if match:
             self.album_added.extend(json.loads(request.content)["ids"])
             self.album_members.setdefault(match[1], set()).update(json.loads(request.content)["ids"])
-            return httpx.Response(200, json=[])
-        return httpx.Response(404, json={"message": f"unexpected {method} {path}"})
+            return httpx2.Response(200, json=[])
+        return httpx2.Response(404, json={"message": f"unexpected {method} {path}"})
 
 
 @pytest.fixture
@@ -215,7 +215,7 @@ def fake_immich(env, monkeypatch):
     fake = FakeImmich()
     monkeypatch.setenv("IMMICH_URL", "http://immich.test")
     monkeypatch.setenv("IMMICH_API_KEY", "secret")
-    monkeypatch.setattr(immich, "_transport", httpx.MockTransport(fake.handler))
+    monkeypatch.setattr(immich, "_transport", httpx2.MockTransport(fake.handler))
     return fake
 
 

@@ -2,7 +2,7 @@
 retried, never stores a broken download, and resumes without duplicates."""
 import json
 
-import httpx
+import httpx2
 import pytest
 
 from unfade import archive, immich, jobs
@@ -24,22 +24,22 @@ class Flaky:
 
 
 def cut_off(request, fake):
-    raise httpx.ReadError("connection reset by peer", request=request)
+    raise httpx2.ReadError("connection reset by peer", request=request)
 
 
 def stored_then_cut_off(request, fake):
     # The server gets and keeps the upload, but the answer never arrives.
     fake.handler(request)
-    raise httpx.RemoteProtocolError("server disconnected without sending a response", request=request)
+    raise httpx2.RemoteProtocolError("server disconnected without sending a response", request=request)
 
 
 def use(monkeypatch, transport):
-    monkeypatch.setattr(immich, "_transport", httpx.MockTransport(transport))
+    monkeypatch.setattr(immich, "_transport", httpx2.MockTransport(transport))
 
 
 def test_requests_are_retried_through_drops_and_overload(fake_immich, monkeypatch):
     flaky = Flaky(fake_immich, 3, lambda request: request.url.path == "/api/tags",
-                  lambda request, fake: httpx.Response(503, text="busy") if flaky.seen % 2 else cut_off(request, fake))
+                  lambda request, fake: httpx2.Response(503, text="busy") if flaky.seen % 2 else cut_off(request, fake))
     use(monkeypatch, flaky)
     assert [tag["value"] for tag in immich.client().tags()] == ["Kuvat/K001"] and flaky.seen == 3
 
@@ -51,7 +51,7 @@ def test_retries_stop_and_say_so(fake_immich, monkeypatch):
 
 
 def test_client_errors_are_not_retried(fake_immich, monkeypatch):
-    flaky = Flaky(fake_immich, 1, lambda request: True, lambda request, fake: httpx.Response(404, json={"message": "no"}))
+    flaky = Flaky(fake_immich, 1, lambda request: True, lambda request, fake: httpx2.Response(404, json={"message": "no"}))
     use(monkeypatch, flaky)
     with pytest.raises(immich.ImmichError, match="404"):
         immich.client().tags()
@@ -60,7 +60,7 @@ def test_client_errors_are_not_retried(fake_immich, monkeypatch):
 def test_a_broken_download_is_fetched_again(fake_immich, env, monkeypatch):
     asset_id = fake_immich.assets[0]["id"]
     flaky = Flaky(fake_immich, 2, lambda request: request.url.path.endswith("/original"),
-                  lambda request, fake: httpx.Response(200, content=fake.originals[asset_id][:100]))
+                  lambda request, fake: httpx2.Response(200, content=fake.originals[asset_id][:100]))
     use(monkeypatch, flaky)
     target = env / "download.jpg"
     immich.client().download(asset_id, target, fake_immich.assets[0]["checksum"])

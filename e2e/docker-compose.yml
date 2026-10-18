@@ -1,11 +1,12 @@
 # Throwaway Immich for unfade's end-to-end tests: server, Valkey and Postgres from Immich's own
 # docker-compose.yml (v3.3.3), without machine learning, with no volumes kept between runs.
-# IMMICH_VERSION picks another server release; the test fixture brings this up and tears it down.
+# IMMICH_VERSION picks another server release (an override the harness adds; the tag here stays
+# literal so Dependabot can update it); the test fixture brings this up and tears it down.
 name: unfade-e2e
 
 services:
   immich-server:
-    image: ghcr.io/immich-app/immich-server:${IMMICH_VERSION:-v3.3.3}
+    image: ghcr.io/immich-app/immich-server:v3.3.3
     environment:
       DB_HOSTNAME: database
       DB_USERNAME: postgres

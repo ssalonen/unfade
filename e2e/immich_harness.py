@@ -14,13 +14,14 @@ import shutil
 import socket
 import struct
 import subprocess
+import tempfile
 import threading
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-import httpx
+import httpx2
 import numpy as np
 from PIL import Image
 
@@ -49,7 +50,13 @@ class ImmichServer:
 
     def _compose(self, *args: str, timeout: float = 900) -> subprocess.CompletedProcess:
         env = {**os.environ, "UNFADE_E2E_PORT": str(self.port)}
-        return subprocess.run(["docker", "compose", "-f", str(COMPOSE_FILE), "-p", self.project, *args],
+        files = ["-f", str(COMPOSE_FILE)]
+        if os.environ.get("IMMICH_VERSION"):
+            # Another Immich than the one pinned in the compose file (kept literal for Dependabot).
+            override = Path(tempfile.gettempdir()) / f"{self.project}.override.yml"
+            override.write_text(f"services:\n  immich-server:\n    image: ghcr.io/immich-app/immich-server:{os.environ['IMMICH_VERSION']}\n")
+            files += ["-f", str(override)]
+        return subprocess.run(["docker", "compose", *files, "-p", self.project, *args],
                               env=env, capture_output=True, text=True, timeout=timeout)
 
     def start(self) -> None:
@@ -61,9 +68,9 @@ class ImmichServer:
         deadline = time.monotonic() + 120
         while time.monotonic() < deadline:
             try:
-                if httpx.get(f"{self.url}/api/server/ping", timeout=5).json().get("res") == "pong":
+                if httpx2.get(f"{self.url}/api/server/ping", timeout=5).json().get("res") == "pong":
                     return
-            except (httpx.HTTPError, ValueError):
+            except (httpx2.HTTPError, ValueError):
                 pass
             time.sleep(1)
         raise RuntimeError("Immich did not answer /api/server/ping")
@@ -73,6 +80,7 @@ class ImmichServer:
 
     def stop(self) -> None:
         self._compose("down", "-v", "--remove-orphans", timeout=300)
+        (Path(tempfile.gettempdir()) / f"{self.project}.override.yml").unlink(missing_ok=True)
 
 
 @dataclass
@@ -84,20 +92,20 @@ class Account:
     token: str
     api_key: str
 
-    def client(self, key: bool = False) -> httpx.Client:
+    def client(self, key: bool = False) -> httpx2.Client:
         headers = {"x-api-key": self.api_key} if key else {"Authorization": f"Bearer {self.token}"}
-        return httpx.Client(base_url=f"{self.url}/api", headers=headers, timeout=60)
+        return httpx2.Client(base_url=f"{self.url}/api", headers=headers, timeout=60)
 
 
 def _login(url: str, email: str, password: str) -> str:
-    response = httpx.post(f"{url}/api/auth/login", json={"email": email, "password": password}, timeout=30)
+    response = httpx2.post(f"{url}/api/auth/login", json={"email": email, "password": password}, timeout=30)
     response.raise_for_status()
     return response.json()["accessToken"]
 
 
 def admin_token(url: str) -> str:
     """Sign the admin up on a fresh server (refused once there is one), then log in."""
-    httpx.post(f"{url}/api/auth/admin-sign-up", json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD, "name": "Admin"}, timeout=30)
+    httpx2.post(f"{url}/api/auth/admin-sign-up", json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD, "name": "Admin"}, timeout=30)
     return _login(url, ADMIN_EMAIL, ADMIN_PASSWORD)
 
 
@@ -106,13 +114,13 @@ def new_account(url: str, admin: str) -> Account:
     email = f"user-{secrets.token_hex(4)}@unfade.test"
     password = secrets.token_hex(8)
     headers = {"Authorization": f"Bearer {admin}"}
-    response = httpx.post(f"{url}/api/admin/users", headers=headers, timeout=30,
+    response = httpx2.post(f"{url}/api/admin/users", headers=headers, timeout=30,
                           json={"email": email, "password": password, "name": "Testi Käyttäjä", "shouldChangePassword": False})
     response.raise_for_status()
     token = _login(url, email, password)
     # Skip the web UI's first-login onboarding, so the spot checks land on the timeline.
-    httpx.put(f"{url}/api/users/me/onboarding", headers={"Authorization": f"Bearer {token}"}, json={"isOnboarded": True}, timeout=30).raise_for_status()
-    response = httpx.post(f"{url}/api/api-keys", headers={"Authorization": f"Bearer {token}"}, json={"name": "unfade", "permissions": ["all"]}, timeout=30)
+    httpx2.put(f"{url}/api/users/me/onboarding", headers={"Authorization": f"Bearer {token}"}, json={"isOnboarded": True}, timeout=30).raise_for_status()
+    response = httpx2.post(f"{url}/api/api-keys", headers={"Authorization": f"Bearer {token}"}, json={"name": "unfade", "permissions": ["all"]}, timeout=30)
     response.raise_for_status()
     return Account(url, email, password, token, response.json()["secret"])
 
@@ -123,9 +131,9 @@ def wait_for_jobs(url: str, admin: str, timeout: float = 180) -> None:
     deadline = time.monotonic() + timeout
     idle_since = None
     while time.monotonic() < deadline:
-        response = httpx.get(f"{url}/api/queues", headers=headers, timeout=30)
+        response = httpx2.get(f"{url}/api/queues", headers=headers, timeout=30)
         if response.status_code == 404:  # Immich v2: the legacy jobs endpoint
-            counts = [queue["jobCounts"] for queue in httpx.get(f"{url}/api/jobs", headers=headers, timeout=30).json().values()]
+            counts = [queue["jobCounts"] for queue in httpx2.get(f"{url}/api/jobs", headers=headers, timeout=30).json().values()]
         else:
             counts = [queue["statistics"] for queue in response.json()]
         busy = sum(count.get("active", 0) + count.get("waiting", 0) + count.get("delayed", 0) for count in counts)
@@ -156,7 +164,7 @@ def faded_photo(seed: int, cast=(1.0, 0.78, 0.6), size=(480, 320), taken: dateti
     return buffer.getvalue()
 
 
-def upload(api: httpx.Client, name: str, content: bytes) -> str:
+def upload(api: httpx2.Client, name: str, content: bytes) -> str:
     now = datetime.now(timezone.utc).isoformat()
     response = api.post("/assets", files={"assetData": (name, content)},
                         data={"deviceAssetId": f"e2e-{name}", "deviceId": "unfade-e2e", "fileCreatedAt": now, "fileModifiedAt": now})
@@ -164,7 +172,7 @@ def upload(api: httpx.Client, name: str, content: bytes) -> str:
     return response.json()["id"]
 
 
-def wait_for_metadata(api: httpx.Client, asset_ids: list[str], timeout: float = 120) -> None:
+def wait_for_metadata(api: httpx2.Client, asset_ids: list[str], timeout: float = 120) -> None:
     """Wait until Immich has read each asset's metadata (its image size is known). Idle queues
     are not enough on a fresh server, where extraction may not have started yet."""
     deadline = time.monotonic() + timeout
@@ -175,7 +183,7 @@ def wait_for_metadata(api: httpx.Client, asset_ids: list[str], timeout: float = 
             time.sleep(0.25)
 
 
-def tag(api: httpx.Client, value: str, asset_ids: list[str]) -> str:
+def tag(api: httpx2.Client, value: str, asset_ids: list[str]) -> str:
     """Tag assets once Immich has read them: its metadata extraction of a fresh upload replaces
     tags added earlier with the file's (none). Give an asset several tags with tag_each."""
     wait_for_metadata(api, asset_ids)
@@ -184,7 +192,7 @@ def tag(api: httpx.Client, value: str, asset_ids: list[str]) -> str:
     return tag_id
 
 
-def tag_each(api: httpx.Client, wanted: dict[str, list[str]]) -> None:
+def tag_each(api: httpx2.Client, wanted: dict[str, list[str]]) -> None:
     """Tag assets with {asset id: [tag values]}, one update per asset (see Immich.add_tags)."""
     wait_for_metadata(api, list(wanted))
     ids = {value: api.put("/tags", json={"tags": [value]}).raise_for_status().json()[0]["id"]
@@ -193,7 +201,7 @@ def tag_each(api: httpx.Client, wanted: dict[str, list[str]]) -> None:
         api.put("/tags/assets", json={"tagIds": [ids[value] for value in values], "assetIds": [asset_id]}).raise_for_status()
 
 
-def album(api: httpx.Client, name: str, asset_ids: list[str]) -> str:
+def album(api: httpx2.Client, name: str, asset_ids: list[str]) -> str:
     return api.post("/albums", json={"albumName": name, "assetIds": asset_ids}).raise_for_status().json()["id"]
 
 
@@ -206,7 +214,7 @@ class ChaosProxy:
     """
 
     def __init__(self, target: str, cuts: int = 0, after: int = 16384):
-        parsed = httpx.URL(target)
+        parsed = httpx2.URL(target)
         self.target = (parsed.host, parsed.port)
         self.cuts, self.after, self.cut, self.refused = cuts, after, 0, 0
         self.down_until = 0.0
@@ -277,3 +285,9 @@ class ChaosProxy:
 
     def close(self) -> None:
         self.server.close()
+
+
+def launch_chromium(playwright):
+    """Playwright's own Chromium, or the browser named by UNFADE_E2E_CHROMIUM (for a machine that
+    already has a Chromium and cannot download the one this Playwright version expects)."""
+    return playwright.chromium.launch(executable_path=os.environ.get("UNFADE_E2E_CHROMIUM") or None)

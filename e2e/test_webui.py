@@ -8,7 +8,7 @@ import sys
 import time
 from datetime import datetime
 
-import httpx
+import httpx2
 import pytest
 
 from unfade.__main__ import main
@@ -34,7 +34,7 @@ def library(unfade_env, admin):
 @pytest.fixture
 def browser():
     with playwright.sync_playwright() as p:
-        instance = p.chromium.launch()
+        instance = harness.launch_chromium(p)
         yield instance
         instance.close()
 
@@ -92,9 +92,9 @@ def unfade_server(library, tmp_path):
     url = f"http://127.0.0.1:{port}"
     for _ in range(100):
         try:
-            if httpx.get(url, timeout=2).status_code == 200:
+            if httpx2.get(url, timeout=2).status_code == 200:
                 break
-        except httpx.HTTPError:
+        except httpx2.HTTPError:
             time.sleep(0.2)
     else:
         process.kill()
@@ -148,9 +148,9 @@ def local_server(tmp_path):
     try:
         for _ in range(100):
             try:
-                httpx.get(url, timeout=2)
+                httpx2.get(url, timeout=2)
                 break
-            except httpx.HTTPError:
+            except httpx2.HTTPError:
                 time.sleep(0.2)
         yield url, scans
     finally:

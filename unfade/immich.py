@@ -12,7 +12,7 @@ import os
 import time
 from datetime import datetime, timezone
 
-import httpx
+import httpx2
 
 from unfade.i18n import t
 
@@ -31,28 +31,28 @@ class ImmichError(Exception):
 
 
 class Immich:
-    def __init__(self, url: str, api_key: str, transport: httpx.BaseTransport | None = None):
+    def __init__(self, url: str, api_key: str, transport: httpx2.BaseTransport | None = None):
         base = url.rstrip("/")
         if not base.endswith("/api"):
             base += "/api"
-        self.client = httpx.Client(base_url=base, headers={"x-api-key": api_key, "Accept": "application/json"},
+        self.client = httpx2.Client(base_url=base, headers={"x-api-key": api_key, "Accept": "application/json"},
                                    # read: the longest silence between received chunks, not the whole transfer;
                                    # a stalled connection is given up and retried after it.
-                                   timeout=httpx.Timeout(30, read=120), transport=transport)
+                                   timeout=httpx2.Timeout(30, read=120), transport=transport)
 
-    def _pause(self, attempt: int, response: httpx.Response | None = None) -> None:
+    def _pause(self, attempt: int, response: httpx2.Response | None = None) -> None:
         wait = min(RETRY_CAP, RETRY_BASE * 2 ** attempt)
         retry_after = response.headers.get("Retry-After", "") if response is not None else ""
         if retry_after.isdigit():
             wait = min(RETRY_CAP, max(wait, float(retry_after)))
         time.sleep(wait)
 
-    def _call(self, method: str, path: str, **kwargs) -> httpx.Response:
+    def _call(self, method: str, path: str, **kwargs) -> httpx2.Response:
         problem = ""
         for attempt in range(RETRY_ATTEMPTS):
             try:
                 response = self.client.request(method, path, **kwargs)
-            except httpx.TransportError as error:  # refused, reset, cut off mid-transfer, timed out
+            except httpx2.TransportError as error:  # refused, reset, cut off mid-transfer, timed out
                 problem = f"{type(error).__name__}: {error}"
                 response = None
             else:
@@ -148,7 +148,7 @@ class Immich:
                             return
                     else:
                         problem = f"{response.status_code}"
-            except httpx.TransportError as error:
+            except httpx2.TransportError as error:
                 problem = f"{type(error).__name__}: {error}"
             if attempt + 1 < RETRY_ATTEMPTS:
                 self._pause(attempt, response)
@@ -247,7 +247,7 @@ def _images(assets: list[dict], trashed: bool = False) -> list[dict]:
     return sorted(images, key=lambda asset: ((asset.get("originalFileName") or "").lower(), asset.get("originalPath") or ""))
 
 
-_transport: httpx.BaseTransport | None = None
+_transport: httpx2.BaseTransport | None = None
 
 
 def configured() -> bool:
