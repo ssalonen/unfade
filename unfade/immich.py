@@ -14,6 +14,8 @@ from datetime import datetime, timezone
 
 import httpx
 
+from unfade.i18n import t
+
 PAGE_SIZE = 1000
 # Connection drops, timeouts and these answers are retried with growing pauses (0.5 s doubling,
 # at most 30 s; with 8 attempts about a minute in all). Every request unfade makes can be
@@ -56,12 +58,12 @@ class Immich:
             else:
                 if response.status_code not in RETRY_STATUSES:
                     if response.status_code >= 400:
-                        raise ImmichError(f"Immich hylkäsi pyynnön {method} {path}: {response.status_code} {response.text[:200]}")
+                        raise ImmichError(t("Immich refused the request {request}: {status} {text}", request=f"{method} {path}", status=response.status_code, text=response.text[:200]))
                     return response
                 problem = f"{response.status_code} {response.text[:200]}"
             if attempt + 1 < RETRY_ATTEMPTS:
                 self._pause(attempt, response)
-        raise ImmichError(f"Immich ei vastaa ({method} {path}, {RETRY_ATTEMPTS} yritystä): {problem}")
+        raise ImmichError(t("Immich does not respond ({request}, {attempts} attempts): {problem}", request=f"{method} {path}", attempts=RETRY_ATTEMPTS, problem=problem))
 
     def me(self) -> dict:
         return self._call("GET", "/users/me").json()
@@ -129,7 +131,7 @@ class Immich:
             try:
                 with self.client.stream("GET", f"/assets/{asset_id}/original") as response:
                     if response.status_code >= 400 and response.status_code not in RETRY_STATUSES:
-                        raise ImmichError(f"Alkuperäistä kuvaa {asset_id} ei saatu: {response.status_code}")
+                        raise ImmichError(t("Could not get original {asset}: {status}", asset=asset_id, status=response.status_code))
                     if response.status_code < 400:
                         digest, size = hashlib.sha1(), 0
                         with open(target, "wb") as stream:
@@ -141,7 +143,7 @@ class Immich:
                         if expected.isdigit() and int(expected) != size:
                             problem = f"lataus katkesi ({size} / {expected} tavua)"
                         elif checksum and base64.b64encode(digest.digest()).decode() != checksum:
-                            problem = "ladattu tiedosto ei vastaa Immichin tarkistussummaa"
+                            problem = t("the downloaded file does not match Immich's checksum")
                         else:
                             return
                     else:
@@ -150,7 +152,7 @@ class Immich:
                 problem = f"{type(error).__name__}: {error}"
             if attempt + 1 < RETRY_ATTEMPTS:
                 self._pause(attempt, response)
-        raise ImmichError(f"Alkuperäistä kuvaa {asset_id} ei saatu ladattua ({RETRY_ATTEMPTS} yritystä): {problem}")
+        raise ImmichError(t("Could not download original {asset} ({attempts} attempts): {problem}", asset=asset_id, attempts=RETRY_ATTEMPTS, problem=problem))
 
     def thumbnail(self, asset_id: str) -> bytes:
         """Immich's small thumbnail, enough for grouping by brightness and colour."""
@@ -254,5 +256,5 @@ def configured() -> bool:
 
 def client() -> Immich:
     if not configured():
-        raise ImmichError("Immich ei ole käytössä: aseta IMMICH_URL ja IMMICH_API_KEY")
+        raise ImmichError(t("Immich is not configured: set IMMICH_URL and IMMICH_API_KEY"))
     return Immich(os.environ["IMMICH_URL"], os.environ["IMMICH_API_KEY"], _transport)

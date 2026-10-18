@@ -14,10 +14,12 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Resp
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from unfade import color_methods, immich, jobs, locations, render
+from unfade import color_methods, i18n, immich, jobs, locations, render
+from unfade.i18n import t
 
 STATIC = Path(__file__).parent / "static"
-TEMPLATES = Jinja2Templates(directory=Path(__file__).parent / "templates")
+TEMPLATES = Jinja2Templates(directory=Path(__file__).parent / "templates",
+                             context_processors=[lambda request: {"lang": i18n.language()}])
 PAGE_SIZE = 48
 
 
@@ -26,18 +28,19 @@ def asset_version() -> str:
     return format(newest, "x")
 
 
-TEMPLATES.env.globals["asset_version"] = asset_version
+TEMPLATES.env.globals.update(asset_version=asset_version, t=t, label=i18n.label, languages=i18n.LANGUAGE_NAMES, script_texts=i18n.script_texts)
+LANGUAGE_COOKIE = "unfade-lang"
 
 
 def _immich_choices() -> dict:
     """Folders, tags and albums for the pickers, or the reason Immich is unavailable."""
     if not immich.configured():
-        return {"available": False, "reason": "Aseta IMMICH_URL ja IMMICH_API_KEY, niin Immich-kansiot, -tunnisteet ja -albumit ovat valittavissa."}
+        return {"available": False, "reason": t("Set IMMICH_URL and IMMICH_API_KEY to choose Immich folders, tags and albums.")}
     try:
         client = immich.client()
         return {"available": True, "user": client.me().get("name", ""), "folders": client.folders(), "tags": client.tags(), "albums": client.albums()}
     except immich.ImmichError as error:
-        return {"available": False, "reason": str(error)}
+        return {"available": False, "reason": t(str(error))}
 
 
 def _home_context(error: str = "", form: dict | None = None) -> dict:
@@ -46,7 +49,7 @@ def _home_context(error: str = "", form: dict | None = None) -> dict:
         "roots": locations.allowed_roots(), "source_label": locations.source_label, "formats": locations.FORMAT_LABELS,
         "destination_label": locations.destination_label, "error": error,
         "form": form or {"source_kind": "local", "destination_kind": "local", "method": color_methods.DEFAULT_METHOD,
-                         "destination_tag": "Värikorjattu", "suggest_groups": "on",
+                         "destination_tag": t("Colour-corrected"), "suggest_groups": "on",
                          "format": "jxl", "original_mode": "stack", "copy_details": "on"},
     }
 
@@ -55,7 +58,7 @@ def _load(job_id: str) -> dict:
     try:
         return jobs.load(job_id)
     except LookupError as error:
-        raise HTTPException(status_code=404, detail=str(error)) from error
+        raise HTTPException(status_code=404, detail=t(str(error))) from error
 
 
 def _page_of(indexes: list[int], page: int) -> tuple[int, int, list[int]]:
@@ -74,8 +77,21 @@ def create_app() -> FastAPI:
     app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
     @app.middleware("http")
-    async def revalidate_static_files(request: Request, call_next):
-        response = await call_next(request)
+    async def language_and_caching(request: Request, call_next):
+        # ?lang= switches the language and is remembered in a cookie; else the browser decides.
+        chosen = request.query_params.get("lang", "")
+        if chosen not in i18n.LANGUAGES:
+            chosen = ""
+        code = chosen or request.cookies.get(LANGUAGE_COOKIE, "")
+        if code not in i18n.LANGUAGES:
+            code = i18n.from_accept_language(request.headers.get("accept-language", ""))
+        token = i18n.use(code)
+        try:
+            response = await call_next(request)
+        finally:
+            i18n.reset(token)
+        if chosen:
+            response.set_cookie(LANGUAGE_COOKIE, chosen, max_age=365 * 24 * 3600, samesite="lax")
         if request.url.path.startswith("/static/"):
             response.headers["Cache-Control"] = "no-cache"
         return response
@@ -89,7 +105,7 @@ def create_app() -> FastAPI:
         try:
             return JSONResponse(locations.browse(path))
         except (ValueError, OSError) as error:
-            raise HTTPException(status_code=422, detail=str(error)) from error
+            raise HTTPException(status_code=422, detail=t(str(error))) from error
 
     @app.post("/jobs")
     async def create_job(request: Request):
@@ -114,7 +130,7 @@ def create_app() -> FastAPI:
             job = await run_in_threadpool(jobs.create, source, destination, method, "suggest_groups" in form)
         except (ValueError, OSError, immich.ImmichError) as error:
             # Show the form again with what was chosen, rather than a bare error page.
-            context = await run_in_threadpool(_home_context, str(error), form)
+            context = await run_in_threadpool(_home_context, t(str(error)), form)
             return TEMPLATES.TemplateResponse(request, "home.html", context, status_code=422)
         return RedirectResponse(f"/jobs/{job['id']}", status_code=303)
 
@@ -144,23 +160,26 @@ def create_app() -> FastAPI:
         try:
             jobs.save_grouping(job_id, json.loads(state), revision)
         except json.JSONDecodeError as error:
-            raise HTTPException(status_code=422, detail="Virheellinen ryhmämuutos") from error
+            raise HTTPException(status_code=422, detail=t("Invalid group change")) from error
         except jobs.GroupingConflict as error:
-            raise HTTPException(status_code=409, detail=str(error)) from error
+            raise HTTPException(status_code=409, detail=t(str(error))) from error
         except LookupError as error:
-            raise HTTPException(status_code=404, detail=str(error)) from error
+            raise HTTPException(status_code=404, detail=t(str(error))) from error
         except ValueError as error:
-            raise HTTPException(status_code=422, detail=str(error)) from error
+            raise HTTPException(status_code=422, detail=t(str(error))) from error
         return RedirectResponse(f"/jobs/{job_id}?saved=grouping#groups", status_code=303)
 
     @app.post("/jobs/{job_id}/groups/{group_id}")
     def save_group(job_id: str, group_id: int, label: str = Form(), method: str = Form()) -> RedirectResponse:
+        stored = next((group["label"] for group in _load(job_id)["groups"] if group["id"] == group_id), None)
+        if stored is not None and label.strip() == i18n.label(stored):
+            label = stored  # an untouched suggested name keeps following the language
         try:
             jobs.save_group(job_id, group_id, label, method)
         except LookupError as error:
-            raise HTTPException(status_code=404, detail=str(error)) from error
+            raise HTTPException(status_code=404, detail=t(str(error))) from error
         except ValueError as error:
-            raise HTTPException(status_code=422, detail=str(error)) from error
+            raise HTTPException(status_code=422, detail=t(str(error))) from error
         return RedirectResponse(_correction_url(job_id, group_id, "method"), status_code=303)
 
     @app.post("/jobs/{job_id}/groups/{group_id}/approve")
@@ -168,9 +187,9 @@ def create_app() -> FastAPI:
         try:
             following = jobs.approve_group(job_id, group_id)
         except LookupError as error:
-            raise HTTPException(status_code=404, detail=str(error)) from error
+            raise HTTPException(status_code=404, detail=t(str(error))) from error
         except ValueError as error:
-            raise HTTPException(status_code=422, detail=str(error)) from error
+            raise HTTPException(status_code=422, detail=t(str(error))) from error
         if following is None:
             return RedirectResponse(_correction_url(job_id, group_id, "all"), status_code=303)
         return RedirectResponse(_correction_url(job_id, following, "approved"), status_code=303)
@@ -185,9 +204,9 @@ def create_app() -> FastAPI:
         try:
             group_id = jobs.set_adjustments(job_id, index, values)
         except LookupError as error:
-            raise HTTPException(status_code=404, detail=str(error)) from error
+            raise HTTPException(status_code=404, detail=t(str(error))) from error
         except ValueError as error:
-            raise HTTPException(status_code=422, detail=str(error)) from error
+            raise HTTPException(status_code=422, detail=t(str(error))) from error
         return RedirectResponse(_correction_url(job_id, group_id, "adjustments", page=page, item=index), status_code=303)
 
     @app.get("/jobs/{job_id}/thumbnail/{index}")
@@ -196,9 +215,9 @@ def create_app() -> FastAPI:
         try:
             content = locations.thumbnail(job["source"], jobs.item(job, index)).read_bytes()
         except LookupError as error:
-            raise HTTPException(status_code=404, detail=str(error)) from error
+            raise HTTPException(status_code=404, detail=t(str(error))) from error
         except (ValueError, OSError, immich.ImmichError) as error:
-            raise HTTPException(status_code=422, detail=str(error)) from error
+            raise HTTPException(status_code=422, detail=t(str(error))) from error
         # Immich may answer with WebP; the local cache is always JPEG.
         media_type = "image/webp" if content[:4] == b"RIFF" else "image/jpeg"
         return Response(content, media_type=media_type)
@@ -210,9 +229,9 @@ def create_app() -> FastAPI:
             entry = jobs.item(job, index)
             content = render.preview_bytes(jobs.source_path(job, index), jobs.method_of(job, entry), entry["adjustments"], view)
         except LookupError as error:
-            raise HTTPException(status_code=404, detail=str(error)) from error
+            raise HTTPException(status_code=404, detail=t(str(error))) from error
         except (ValueError, OSError, immich.ImmichError) as error:
-            raise HTTPException(status_code=422, detail=str(error)) from error
+            raise HTTPException(status_code=422, detail=t(str(error))) from error
         return Response(content, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
 
     @app.get("/jobs/{job_id}/groups/{group_id}/delta-e")
@@ -222,7 +241,7 @@ def create_app() -> FastAPI:
         try:
             method = jobs.group(job, group_id)["method"]
         except LookupError as error:
-            raise HTTPException(status_code=404, detail=str(error)) from error
+            raise HTTPException(status_code=404, detail=t(str(error))) from error
         _, _, indexes = _page_of(jobs.members(job, group_id), page)
         items = {}
         for index in indexes:
@@ -243,7 +262,7 @@ def create_app() -> FastAPI:
         try:
             jobs.start_export(job_id, bool(force))
         except ValueError as error:
-            raise HTTPException(status_code=409, detail=str(error)) from error
+            raise HTTPException(status_code=409, detail=t(str(error))) from error
         return RedirectResponse(f"/jobs/{job_id}#export", status_code=303)
 
     @app.get("/jobs/{job_id}/export")
@@ -256,7 +275,7 @@ def create_app() -> FastAPI:
         try:
             jobs.delete(job_id)
         except ValueError as error:
-            raise HTTPException(status_code=409, detail=str(error)) from error
+            raise HTTPException(status_code=409, detail=t(str(error))) from error
         return RedirectResponse("/", status_code=303)
 
     return app

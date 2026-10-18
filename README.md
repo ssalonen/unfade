@@ -9,7 +9,7 @@ Colour correction for faded photos, for a local folder or an [Immich](https://im
 - An archive of originals that outlives both this tool and Immich: originals byte for byte, Immich's metadata as standard XMP sidecars, references to every corrected copy with its recipe, and a snapshot of the code that made them.
 - Built to survive dropped connections and interrupted uploads and downloads.
 
-The user interface is in Finnish.
+The user interface is in English and Finnish.
 
 ## Quick start
 
@@ -136,6 +136,9 @@ archive/
 | `UNFADE_ROOTS` | Local folders the web UI may browse, separated by `:` (default: home directory). The web UI has no login, so keep it on localhost. |
 | `UNFADE_DATA_DIR` | Jobs and cached originals (default `./data/unfade`) |
 | `UNFADE_RETRY_ATTEMPTS`, `UNFADE_RETRY_BASE` | Retry count and first pause in seconds |
+| `UNFADE_LANG` | `en` or `fi` for the command line and the archive's README and index (default: from `LANG`, else English) |
+
+The web UI follows the browser's language; the English · Suomi switch at the top of each page overrides it and is remembered in a cookie.
 
 Lossless copies are large: a grainy 24-megapixel scan is easily tens of megabytes.
 
@@ -160,6 +163,10 @@ uv run --group e2e pytest e2e      # end-to-end, needs Docker
   - `UNFADE_E2E_KEEP=1` leaves the server running.
   - `UNFADE_E2E_URL` uses a running test server.
   - Without Docker the tests are skipped.
+
+## Translations
+
+User-facing text is written in English and wrapped in `t()` in Python, the templates and the browser scripts. The Finnish translations are in `unfade/locale_fi.py`, keyed by the English text. `tests/test_i18n.py` fails when a text has no translation, a translation is unused, or a placeholder differs.
 
 ## License
 

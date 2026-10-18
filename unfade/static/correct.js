@@ -25,6 +25,9 @@ if (typeof module === 'object' && module.exports) module.exports = {adjustedPixe
 
 (() => {
   if (typeof document === 'undefined') return;
+  const t = (text, values = {}) => ((window.unfadeText || {})[text] || text).replace(/\{(\w+)\}/g, (_, key) => values[key]);
+  // Finnish writes decimals with a comma.
+  const decimal = (text) => document.documentElement.lang === 'fi' ? text.replace('.', ',') : text;
   const showOriginal = document.getElementById('show-original');
   const showClipping = document.getElementById('show-clipping');
   if (!showClipping) return;
@@ -99,7 +102,7 @@ if (typeof module === 'object' && module.exports) module.exports = {adjustedPixe
     view.onStats({high: share(high), low: share(low), bins});
   }
 
-  const formatShare = (value) => `${String(value).replace('.', ',')} %`;
+  const formatShare = (value) => `${decimal(String(value))} %`;
 
   function attach(canvas, onStats, adjustments) {
     const view = {canvas, onStats, adjustments};
@@ -115,9 +118,9 @@ if (typeof module === 'object' && module.exports) module.exports = {adjustedPixe
   document.querySelectorAll('.correction-card .clip-canvas').forEach(canvas => {
     const badge = canvas.closest('.correction-card').querySelector('.clip-badge');
     attach(canvas, stats => {
-      if (!stats) { badge.textContent = 'esikatselu puuttuu'; return; }
+      if (!stats) { badge.textContent = t('preview missing'); return; }
       const total = Math.round((stats.high + stats.low) * 10) / 10;
-      badge.textContent = showOriginal.checked ? 'alkuperäinen' : `${total > 1 ? '⚠ ' : ''}leikkautuu ${formatShare(total)}`;
+      badge.textContent = showOriginal.checked ? t('original') : `${total > 1 ? '⚠ ' : ''}${t('clips {share}', {share: formatShare(total)})}`;
       badge.classList.toggle('warn', total > 1 && !showOriginal.checked);
     });
   });
@@ -165,7 +168,7 @@ if (typeof module === 'object' && module.exports) module.exports = {adjustedPixe
     const table = document.getElementById('delta-e-table');
     const fill = (attribute, values) => document.querySelectorAll(`[${attribute}]`).forEach(cell => {
       const value = values ? values[cell.getAttribute(attribute)] : undefined;
-      cell.textContent = typeof value === 'number' ? value.toFixed(1).replace('.', ',') : '–';
+      cell.textContent = typeof value === 'number' ? decimal(value.toFixed(1)) : '–';
     });
     const show = (data) => {
       const average = data && data.average;

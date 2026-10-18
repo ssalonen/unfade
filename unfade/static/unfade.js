@@ -1,6 +1,7 @@
 // Setup page: show the fields of the chosen source and destination, and browse local folders.
 // Job page: follow a running export.
 (() => {
+  const t = (text, values = {}) => ((window.unfadeText || {})[text] || text).replace(/\{(\w+)\}/g, (_, key) => values[key]);
   document.querySelectorAll('[data-kind-group]').forEach(group => {
     const radios = [...group.querySelectorAll(`input[name="${group.dataset.kindGroup}"]`)];
     const update = () => {
@@ -21,7 +22,7 @@
     const toggle = document.createElement('button');
     toggle.type = 'button';
     toggle.className = 'secondary';
-    toggle.textContent = 'Selaa kansioita';
+    toggle.textContent = t('Browse folders');
     const panel = document.createElement('div');
     panel.className = 'folder-panel';
     panel.hidden = true;
@@ -34,10 +35,10 @@
         const head = document.createElement('p');
         head.innerHTML = '<strong></strong> <span class="hint"></span>';
         head.querySelector('strong').textContent = data.path;
-        head.querySelector('span').textContent = `${data.images} kuvaa`;
+        head.querySelector('span').textContent = data.images === 1 ? t('1 image') : t('{count} images', {count: data.images});
         const choose = document.createElement('button');
         choose.type = 'button';
-        choose.textContent = 'Valitse tämä kansio';
+        choose.textContent = t('Choose this folder');
         choose.addEventListener('click', () => { input.value = data.path; panel.hidden = true; });
         const list = document.createElement('ul');
         const entry = (label, target) => {
@@ -50,12 +51,12 @@
           item.append(link);
           list.append(item);
         };
-        if (data.parent) entry('↑ Yläkansio', data.parent);
+        if (data.parent) entry(`↑ ${t('Parent folder')}`, data.parent);
         data.dirs.forEach(name => entry(`📁 ${name}`, `${data.path.replace(/\/$/, '')}/${name}`));
         if (data.roots.length > 1) data.roots.forEach(root => entry(`⌂ ${root}`, root));
         panel.append(head, choose, list);
       })
-      .catch(detail => { panel.textContent = typeof detail === 'string' ? detail : 'Kansiota ei voitu avata'; });
+      .catch(detail => { panel.textContent = typeof detail === 'string' ? detail : t('The folder could not be opened'); });
 
     toggle.addEventListener('click', () => {
       panel.hidden = !panel.hidden;
@@ -68,7 +69,7 @@
     const status = document.getElementById('export-status');
     const poll = () => fetch(exportSection.dataset.exportUrl).then(response => response.json()).then(state => {
       if (state.state === 'running') {
-        status.textContent = `Vienti käynnissä: ${state.done} / ${state.total}`;
+        status.textContent = t('Export running: {done} / {total}', {done: state.done, total: state.total});
         setTimeout(poll, 1500);
       } else {
         window.location.reload();

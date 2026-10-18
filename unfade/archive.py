@@ -32,6 +32,8 @@ from xml.sax.saxutils import escape
 from PIL import Image
 
 from unfade import encode, fingerprint, immich, jobs, locations, render, version
+from unfade.i18n import language, t
+from unfade.locale_fi import FI_ARCHIVE_README
 
 FORMAT = "unfade-archive/1"
 NAMESPACE = "https://github.com/ssalonen/unfade/ns/archive/1.0/"
@@ -72,9 +74,9 @@ class Archive:
         if self.manifest_path.is_file():
             self.manifest = json.loads(self.manifest_path.read_text(encoding="utf-8"))
             if self.manifest.get("format") != FORMAT:
-                raise ArchiveError(f"{root} ei ole unfade-arkisto ({self.manifest.get('format')})")
+                raise ArchiveError(t("{root} is not an unfade archive ({format})", root=root, format=self.manifest.get('format')))
         elif root.exists() and any(root.iterdir()):
-            raise ArchiveError(f"{root} ei ole tyhjä eikä unfade-arkisto")
+            raise ArchiveError(t("{root} is neither empty nor an unfade archive", root=root))
         else:
             self.manifest = {"format": FORMAT, "created": _now(), "originals": []}
         self.by_sha = {entry["sha256"]: entry for entry in self.manifest["originals"]}
@@ -95,14 +97,14 @@ class Archive:
         if entry:
             stored = self.root / "originals" / entry["name"]
             if not stored.is_file() or _sha256(stored) != sha256:
-                raise ArchiveError(f"Arkiston tiedosto {stored} puuttuu tai on muuttunut; arkistoa ei päivitetty")
+                raise ArchiveError(t("Archive file {file} is missing or has changed; the archive was not updated", file=stored))
             return entry, False
         name = self.name_for(wanted, sha256)
         target = self.root / "originals" / name
         if target.exists():
             # Left by a run that stopped before saving the manifest: keep it if it is this original.
             if _sha256(target) != sha256:
-                raise ArchiveError(f"{target} on olemassa mutta puuttuu luettelosta eikä vastaa alkuperäistä; arkistoa ei päivitetty")
+                raise ArchiveError(t("{file} exists but is not in the manifest and does not match the original; the archive was not updated", file=target))
             entry = {"name": name, "sha256": sha256, "archived": _now()}
             self.manifest["originals"].append(entry)
             self.by_sha[sha256] = entry
@@ -112,7 +114,7 @@ class Archive:
         shutil.copyfile(source_file, partial)
         if _sha256(partial) != sha256:
             partial.unlink()
-            raise ArchiveError(f"{name}: kopio arkistoon ei vastaa lähdettä")
+            raise ArchiveError(t("{name}: the copy in the archive does not match the source", name=name))
         os.replace(partial, target)
         entry = {"name": name, "sha256": sha256, "archived": _now()}
         self.manifest["originals"].append(entry)
@@ -296,7 +298,7 @@ def _archive_items(archive: "Archive", source: dict, client, shared: set[str], c
             path = locations.local_file(source, item)
             sha1 = fingerprint.file_sha1(path)
             if base64.b64decode(item["checksum"]).hex() != sha1:
-                raise ArchiveError(f"{item['name']}: ladattu tiedosto ei vastaa Immichin tarkistussummaa")
+                raise ArchiveError(t("{name}: the downloaded file does not match Immich's checksum", name=item['name']))
         sha256 = _sha256(path)
         entry, added = archive.add_original(path, item["name"], sha256)
         counts["added" if added else "unchanged"] += 1
@@ -344,7 +346,7 @@ def run(source: dict, target: str, progress=None) -> dict:
     source = locations.validate_source(source)
     root = locations.checked_folder(target, create=True)
     if source["kind"] == "local" and (Path(source["path"]) == root or Path(source["path"]) in root.parents or root in Path(source["path"]).parents):
-        raise ArchiveError("Arkisto ja lähde eivät voi olla sisäkkäin")
+        raise ArchiveError(t("The archive and the source cannot be inside one another"))
     archive = Archive(root)
     items = locations.list_items(source, trashed=True)
     client = immich.client() if source["kind"] != "local" else None
@@ -365,9 +367,9 @@ def run(source: dict, target: str, progress=None) -> dict:
         archive.save_manifest()
     for code in codes.values():
         if not version.snapshot(code, root / "code" / f"unfade-{code['id']}"):
-            warnings.append(f"Koodiversiota {code['id']} (commit {code.get('commit') or '?'}) ei saatu arkistoon")
+            warnings.append(t("Code version {id} (commit {commit}) could not be archived", id=code['id'], commit=code.get('commit') or '?'))
     _write(root / "code" / "recompute.py", (version.ROOT / "unfade" / "recompute.py").read_bytes())
-    _write(root / "README.md", README.encode("utf-8"))
+    _write(root / "README.md", (FI_ARCHIVE_README if language() == "fi" else README).encode("utf-8"))
     _write(root / "index.html", _index(root, archive))
     _write_sums(root)
     return {**counts, "warnings": warnings, "codes": sorted(codes)}
@@ -394,9 +396,9 @@ def verify(target: str) -> list[str]:
         digest, name = line.split("  ", 1)
         path = root / name
         if not path.is_file():
-            problems.append(f"puuttuu: {name}")
+            problems.append(t("missing: {name}", name=name))
         elif _sha256(path) != digest:
-            problems.append(f"muuttunut: {name}")
+            problems.append(t("changed: {name}", name=name))
     return problems
 
 
@@ -407,16 +409,16 @@ def _index(root: Path, archive: Archive) -> bytes:
         path = root / "originals" / (entry["name"] + ".json")
         if path.is_file():
             records.append(json.loads(path.read_text(encoding="utf-8")))
-    by: dict[str, dict[str, list[dict]]] = {"Tunnisteet": {}, "Albumit": {}, "Vuodet": {}}
+    by: dict[str, dict[str, list[dict]]] = {"tags": {}, "albums": {}, "years": {}}
     for record in records:
         meta = record.get("immich") or {}
         asset = meta.get("asset") or {}
         for tag in asset.get("tags") or []:
-            by["Tunnisteet"].setdefault(tag["value"], []).append(record)
+            by["tags"].setdefault(tag["value"], []).append(record)
         for album in meta.get("albums") or []:
-            by["Albumit"].setdefault(album["name"], []).append(record)
+            by["albums"].setdefault(album["name"], []).append(record)
         taken = (asset.get("exifInfo") or {}).get("dateTimeOriginal") or asset.get("localDateTime") or ""
-        by["Vuodet"].setdefault(taken[:4] or "ei päiväystä", []).append(record)
+        by["years"].setdefault(taken[:4] or t("no date"), []).append(record)
 
     def card(record: dict) -> str:
         name = html.escape(record["name"])
@@ -424,22 +426,24 @@ def _index(root: Path, archive: Archive) -> bytes:
         copies = len(record.get("copies") or [])
         return (f'<figure><a href="{link}"><img src="index/thumbs/{record["sha256"][:16]}.jpg" alt="" loading="lazy"></a>'
                 f'<figcaption><a href="{link}">{name}</a><br><a href="{link}.xmp">XMP</a> · <a href="{link}.json">JSON</a>'
-                f'{f" · {copies} korjattua" if copies else ""}</figcaption></figure>')
+                f'{" · " + t("{count} corrected", count=copies) if copies else ""}</figcaption></figure>')
 
+    titles = {"tags": t("Tags"), "albums": t("Albums"), "years": t("Years")}
     sections, buttons = [], []
-    for title, groups in by.items():
+    for view, groups in by.items():
         if not groups:
             continue
-        view = title.lower()
+        title = titles[view]
         blocks = "".join(f'<h3>{html.escape(key)} <small>({len(group)})</small></h3><div class="grid">{"".join(card(record) for record in group)}</div>'
                          for key, group in sorted(groups.items(), key=lambda pair: pair[0].lower()))
         sections.append(f'<section id="{view}" data-view><h2>{title}</h2>{blocks}</section>')
         buttons.append(f'<button type="button" data-show="{view}">{title} ({len(groups)})</button>')
-    sections.append(f'<section id="kaikki" data-view><h2>Kaikki ({len(records)})</h2><div class="grid">{"".join(card(record) for record in records)}</div></section>')
-    buttons.append(f'<button type="button" data-show="kaikki">Kaikki ({len(records)})</button>')
+    everything = t("All")
+    sections.append(f'<section id="all" data-view><h2>{everything} ({len(records)})</h2><div class="grid">{"".join(card(record) for record in records)}</div></section>')
+    buttons.append(f'<button type="button" data-show="all">{everything} ({len(records)})</button>')
     return (
-        '<!doctype html><html lang="fi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
-        "<title>Alkuperäisten arkisto</title><style>"
+        f'<!doctype html><html lang="{language()}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
+        f"<title>{t('Archive of originals')}</title><style>"
         ":root{font-family:system-ui,sans-serif;color:#20312a;background:#f2f1eb}body{margin:0 auto;max-width:1200px;padding:1rem}"
         ".grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:.6rem}"
         "figure{margin:0;background:#fff;border:1px solid #d8ded4;border-radius:.5rem;padding:.4rem}"
@@ -448,13 +452,13 @@ def _index(root: Path, archive: Archive) -> bytes:
         "nav{display:flex;flex-wrap:wrap;gap:.5rem;margin:1rem 0}nav button{font:inherit;font-weight:700;min-height:44px;padding:.5rem 1rem;"
         "border:2px solid #245d40;border-radius:.4rem;background:#fff;color:#245d40;cursor:pointer}"
         "nav button[aria-pressed=true]{background:#245d40;color:#fff}"
-        "</style></head><body><h1>Alkuperäisten arkisto</h1>"
-        f"<p>{len(records)} alkuperäistä · päivitetty {html.escape(archive.manifest.get('updated', ''))} · "
-        'ohje: <a href="README.md">README.md</a> · tarkistus: <code>sha256sum -c SHA256SUMS</code></p>'
-        f'<nav aria-label="Näkymä">{"".join(buttons)}</nav>'
+        f"</style></head><body><h1>{t('Archive of originals')}</h1>"
+        f"<p>{t('{count} originals · updated {time}', count=len(records), time=html.escape(archive.manifest.get('updated', '')))} · "
+        f'{t("guide:")} <a href="README.md">README.md</a> · {t("check:")} <code>sha256sum -c SHA256SUMS</code></p>'
+        f'<nav aria-label="{t("View")}">{"".join(buttons)}</nav>'
         + "".join(sections)
         # One view at a time; without JavaScript every section stays visible. The view is kept in
-        # the address (#albumit), so a link or reload opens the same one.
+        # the address (#albums), so a link or reload opens the same one.
         + "<script>(()=>{const views=[...document.querySelectorAll('[data-view]')],buttons=[...document.querySelectorAll('[data-show]')];"
           "const show=id=>{if(!views.some(v=>v.id===id))id=views[0].id;views.forEach(v=>v.hidden=v.id!==id);"
           "buttons.forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.show===id)))};"
@@ -464,51 +468,50 @@ def _index(root: Path, archive: Archive) -> bytes:
     ).encode("utf-8")
 
 
-README = """# Alkuperäisten arkisto (unfade)
+README = """# Archive of originals (unfade)
 
-Tämä hakemisto on unfadein tekemä arkisto alkuperäisistä kuvista. Se on tarkoitettu
-säilymään ilman unfadeia, Immichiä tai tätä konetta.
+This folder is an archive of original images made by unfade. It is meant to outlive unfade,
+Immich and this machine.
 
-## Sisältö
+## Contents
 
-- `originals/<nimi>` – alkuperäinen kuva tavu tavulta sellaisena kuin Immich (tai lähdekansio)
-  sen säilytti. Arkistoa ei koskaan muokkaa tätä tiedostoa.
-- `originals/<nimi>.xmp` – XMP-sivutiedosto: kuvaus, tunnisteet (`dc:subject` ja
-  `digiKam:TagsList`), arvio, päiväys aikavyöhykkeineen, sijainti, henkilöt kasvoalueineen
-  (MWG-alueet), albumit, suosikki- ja roskakoritila sekä jokainen korjattu kopio ohjeineen.
-  digiKam, darktable, Lightroom, exiftool ja Immich lukevat sen.
-- `originals/<nimi>.json` – täydellinen tietue: tiivisteet (SHA-256, SHA-1 eli Immichin
-  tarkistussumma, pikselitiiviste, pHash, dHash), lähteet (Immich-tunnus ja polku), Immichin
-  koko kuvatieto sellaisenaan, albumit, kasvot ja korjatut kopiot.
-- `code/unfade-<koodin tunnus>/` – se korjauskoodi, jolla kopio tehtiin, tiedostoittain.
-  Tunnus on tiedostojen tiiviste, joten kansion sisältö on täsmälleen se koodi.
-  `uv.lock` kertoo kirjastojen versiot.
-- `code/recompute.py` – laskee kopion uudelleen alkuperäisestä ja ohjeesta.
-- `index.html` – selattava yleiskuva tunnisteittain, albumeittain ja vuosittain.
-- `manifest.json` – luettelo alkuperäisistä ja niiden pysyvistä nimistä.
-- `SHA256SUMS` – jokaisen tiedoston tiiviste.
+- `originals/<name>`: the original image byte for byte, as Immich (or the source folder) kept
+  it. The archive never modifies this file.
+- `originals/<name>.xmp`: an XMP sidecar with the description, tags (`dc:subject` and
+  `digiKam:TagsList`), rating, date with time zone, location, people with their face regions
+  (MWG regions), albums, favourite and trash state, and every corrected copy with its recipe.
+  digiKam, darktable, Lightroom, exiftool and Immich read it.
+- `originals/<name>.json`: the complete record: digests (SHA-256, SHA-1 which is Immich's
+  checksum, pixel digest, pHash, dHash), sources (Immich id and path), Immich's full asset data
+  as it was, albums, faces and corrected copies.
+- `code/unfade-<code id>/`: the correction code that made a copy, file for file. The id is a
+  digest of the files, so the folder holds exactly that code. `uv.lock` gives the library
+  versions.
+- `code/recompute.py`: recomputes a copy from the original and its recipe.
+- `index.html`: an overview to browse by tag, album and year.
+- `manifest.json`: the list of originals and their permanent names.
+- `SHA256SUMS`: the digest of every file.
 
-## Tarkistus
+## Checking
 
     sha256sum -c SHA256SUMS
 
-## Kopion uudelleenlaskenta
+## Recomputing a copy
 
-Korjattu kopio ei ole arkistossa, mutta sen voi laskea uudelleen: ohje (menetelmä, sovitetut
-käyräparametrit ja kuvan omat säädöt) on alkuperäisen JSON- ja XMP-tiedostossa, ja koodi on
-hakemistossa `code/`.
+A corrected copy is not in the archive, but it can be recomputed: the recipe (method, fitted
+curve parameters and the image's own adjustments) is in the original's JSON and XMP files, and
+the code is in `code/`.
 
-    python3 code/recompute.py originals/<nimi> --out kopio.png
-    python3 code/recompute.py originals/<nimi> --copy <UUID> --check <olemassa oleva kopio>
+    python3 code/recompute.py originals/<name> --out copy.png
+    python3 code/recompute.py originals/<name> --copy <UUID> --check <existing copy>
 
-Tarvitaan Python 3 sekä numpy, pillow, pillow-heif ja imagecodecs. Tulos on häviötön
-16-bittinen PNG, jonka pikselit ovat samat kuin alkuperäisessä kopiossa.
+This needs Python 3 with numpy, pillow, pillow-heif and imagecodecs. The result is a lossless
+16-bit PNG with the same pixels as the original copy.
 
-## Nimet
+## Names
 
-Nimet päätetään, kun alkuperäinen arkistoidaan ensimmäisen kerran, eivätkä ne muutu.
-Immich-lähteen alkuperäiset ovat yhdessä tasaisessa hakemistossa alkuperäisellä nimellään;
-paikallisen kansion alikansiot säilyvät. Jos sama nimi on jo toisella sisällöllä, nimeen
-lisätään tiedoston SHA-256-tiivisteen alku. Tunnisteet, albumit ja päiväykset ovat
-sivutiedostoissa, eivät hakemistorakenteessa.
+A name is fixed when the original is first archived, and never changes. Originals from Immich
+are in one flat folder with their original names; subfolders of a local folder are kept. When
+the name is already taken by other content, the start of the file's SHA-256 is appended. Tags,
+albums and dates are in the sidecars, not in the folder structure.
 """

@@ -17,6 +17,7 @@ from PIL import Image, ImageOps
 from pillow_heif import register_heif_opener
 
 from unfade import immich
+from unfade.i18n import t
 
 register_heif_opener(thumbnails=False)
 
@@ -24,7 +25,7 @@ IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".tif", ".tiff", ".heic", ".heif", ".
 SOURCE_KINDS = ("local", "immich-folder", "immich-tag", "immich-album")
 DESTINATION_KINDS = ("local", "immich")
 FORMATS = ("jxl", "jpeg")
-FORMAT_LABELS = {"jxl": "häviötön 16-bit JPEG XL", "jpeg": "JPEG (pieni, häviöllinen)"}
+FORMAT_LABELS = {"jxl": "lossless 16-bit JPEG XL", "jpeg": "JPEG (small, lossy)"}
 _downloads: dict[Path, threading.Lock] = {}
 _downloads_lock = threading.Lock()
 
@@ -42,14 +43,14 @@ def allowed_roots() -> list[Path]:
 
 def checked_folder(value: str, create: bool = False) -> Path:
     if not value or not value.strip():
-        raise ValueError("Valitse kansio")
+        raise ValueError(t("Choose a folder"))
     path = Path(value.strip()).expanduser().resolve()
     if not any(path == root or root in path.parents for root in allowed_roots()):
-        raise ValueError(f"Kansio on sallittujen juurien ulkopuolella: {', '.join(map(str, allowed_roots()))}")
+        raise ValueError(t("The folder is outside the allowed roots: {roots}", roots=', '.join(map(str, allowed_roots()))))
     if create:
         path.mkdir(parents=True, exist_ok=True)
     if not path.is_dir():
-        raise ValueError(f"Kansiota ei löydy: {path}")
+        raise ValueError(t("Folder not found: {path}", path=path))
     return path
 
 
@@ -67,30 +68,31 @@ def browse(value: str) -> dict:
 def source_label(source: dict) -> str:
     kind = source["kind"]
     if kind == "local":
-        return f"Kansio {source['path']}" + (" alikansioineen" if source.get("recursive") else "")
+        return t("Folder {path} with subfolders" if source.get("recursive") else "Folder {path}", path=source["path"])
     if kind == "immich-folder":
-        return f"Immich-kansio {source['path']}" + (" alikansioineen" if source.get("recursive") else "")
+        return t("Immich folder {path} with subfolders" if source.get("recursive") else "Immich folder {path}", path=source["path"])
     if kind == "immich-tag":
-        return f"Immich-tunniste {source['name']}"
-    return f"Immich-albumi {source['name']}"
+        return t("Immich tag {name}", name=source["name"])
+    return t("Immich album {name}", name=source["name"])
 
 
 def destination_label(destination: dict) -> str:
-    form = FORMAT_LABELS[destination.get("format", "jxl")]
+    form = t(FORMAT_LABELS[destination.get("format", "jxl")])
     if destination["kind"] == "local":
-        return f"Kansio {destination['path']} · {form}"
-    parts = [f"tunniste {destination['tag']}" if destination.get("tag") else "", f"albumi {destination['album_name']}" if destination.get("album_id") else "",
-             "korvaa alkuperäisen" if destination.get("replace_original") else "",
-             "pinossa alkuperäisen kanssa" if destination.get("stack") else "",
-             "alkuperäisen albumit, tunnisteet ja tiedot" if destination.get("copy_details") else "",
-             "aiempi kopio roskakoriin" if destination.get("replace_previous") and not destination.get("replace_original") else ""]
+        return t("Folder {path}", path=destination["path"]) + f" · {form}"
+    parts = [t("tag {name}", name=destination["tag"]) if destination.get("tag") else "",
+             t("album {name}", name=destination["album_name"]) if destination.get("album_id") else "",
+             t("replaces the original") if destination.get("replace_original") else "",
+             t("stacked with the original") if destination.get("stack") else "",
+             t("the original's albums, tags and details") if destination.get("copy_details") else "",
+             t("earlier copy to the trash") if destination.get("replace_previous") and not destination.get("replace_original") else ""]
     return "Immich, " + ", ".join(filter(None, parts)) + f" · {form}"
 
 
 def validate_source(source: dict) -> dict:
     kind = source.get("kind")
     if kind not in SOURCE_KINDS:
-        raise ValueError("Valitse lähde")
+        raise ValueError(t("Choose a source"))
     recursive = bool(source.get("recursive"))
     if kind == "local":
         return {"kind": kind, "path": str(checked_folder(source.get("path", ""))), "recursive": recursive}
@@ -98,35 +100,35 @@ def validate_source(source: dict) -> dict:
     if kind == "immich-folder":
         path = (source.get("path") or "").strip()
         if path not in client.folders():
-            raise ValueError("Immich-kansiota ei löydy")
+            raise ValueError(t("Immich folder not found"))
         return {"kind": kind, "path": path, "recursive": recursive}
     if kind == "immich-tag":
         tag = next((tag for tag in client.tags() if tag["id"] == source.get("id") or tag["value"] == source.get("name")), None)
         if not tag:
-            raise ValueError("Immich-tunnistetta ei löydy")
+            raise ValueError(t("Immich tag not found"))
         return {"kind": kind, "id": tag["id"], "name": tag["value"]}
     albums = [album for album in client.albums() if album["id"] == source.get("id") or album["albumName"] == source.get("name")]
     if len(albums) != 1:
-        raise ValueError("Immich-albumia ei löydy" if not albums else "Samannimisiä albumeja on useita")
+        raise ValueError(t("Immich album not found") if not albums else t("Several albums have that name"))
     return {"kind": kind, "id": albums[0]["id"], "name": albums[0]["albumName"]}
 
 
 def validate_destination(destination: dict, source: dict) -> dict:
     kind = destination.get("kind")
     if kind not in DESTINATION_KINDS:
-        raise ValueError("Valitse kohde")
+        raise ValueError(t("Choose a destination"))
     output_format = destination.get("format") or "jxl"
     if output_format not in FORMATS:
-        raise ValueError("Tuntematon tallennusmuoto")
+        raise ValueError(t("Unknown file format"))
     if kind == "local":
         path = checked_folder(destination.get("path", ""), create=True)
         suffix = (destination.get("suffix") or "").strip()
         if any(char in suffix for char in "/\\") or len(suffix) > 40:
-            raise ValueError("Virheellinen nimen pääte")
+            raise ValueError(t("Invalid file name suffix"))
         if source["kind"] == "local" and not suffix:
             origin = Path(source["path"])
             if path == origin or (source.get("recursive") and origin in path.parents):
-                raise ValueError("Kohde on lähdekansiossa: anna nimelle pääte, ettei alkuperäisiä korvata")
+                raise ValueError(t("The destination is in the source folder: give a file name suffix so the originals are not replaced"))
         return {"kind": kind, "path": str(path), "suffix": suffix, "keep_folders": bool(destination.get("keep_folders")), "format": output_format}
     client = immich.client()
     tag = (destination.get("tag") or "").strip()
@@ -135,7 +137,7 @@ def validate_destination(destination: dict, source: dict) -> dict:
     if album_id:
         album = next((album for album in client.albums() if album["id"] == album_id), None)
         if not album:
-            raise ValueError("Immich-albumia ei löydy")
+            raise ValueError(t("Immich album not found"))
         album_name = album["albumName"]
     # Only an Immich original can share a stack, albums, tags and Immich-side details with its copy,
     # or be replaced by it.
@@ -144,7 +146,7 @@ def validate_destination(destination: dict, source: dict) -> dict:
     stack = bool(destination.get("stack")) and from_immich and not replace_original
     copy_details = (bool(destination.get("copy_details")) or replace_original) and from_immich
     if not tag and not album_id and not copy_details:
-        raise ValueError("Anna Immich-kohteelle tunniste tai albumi, jotta korjatut kuvat löytyvät")
+        raise ValueError(t("Give the Immich destination a tag or an album, so the corrected images can be found"))
     return {"kind": kind, "tag": tag, "album_id": album_id, "album_name": album_name, "format": output_format,
             "stack": stack, "copy_details": copy_details, "replace_original": replace_original,
             "replace_previous": bool(destination.get("replace_previous")) or replace_original}
@@ -194,7 +196,7 @@ def local_file(source: dict, item: dict) -> Path:
         root = Path(source["path"])
         path = (root / item["key"]).resolve()
         if root not in path.parents or not path.is_file():
-            raise LookupError(f"Lähdekuvaa ei löydy: {item['name']}")
+            raise LookupError(t("Source image not found: {name}", name=item['name']))
         return path
     digest = hashlib.sha256(f"{item['key']}:{item.get('checksum', '')}".encode()).hexdigest()[:16]
     cache = data_directory() / "immich-originals"
@@ -236,7 +238,7 @@ def _local_thumbnail(source: Path, cache_directory: Path, max_size: int = 400) -
                 image = image.convert("RGB")
             image.save(target, "JPEG", quality=82, optimize=True)
     except (OSError, ValueError, SyntaxError) as error:
-        raise ValueError("Kuvan esikatselua ei voitu luoda") from error
+        raise ValueError(t("Could not create a preview of the image")) from error
     return target
 
 

@@ -56,7 +56,7 @@ def _rgb(pixels: np.ndarray) -> np.ndarray:
         pixels = np.repeat(pixels[..., :1], 3, axis=-1)
     pixels = pixels[..., :3]
     if pixels.dtype not in (np.uint8, np.uint16):
-        raise ValueError(f"Kuvan bittisyvyyttä ei tueta: {pixels.dtype}")
+        raise ValueError(f"Unsupported image bit depth: {pixels.dtype}")
     return pixels
 
 

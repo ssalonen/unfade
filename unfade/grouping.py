@@ -6,6 +6,8 @@ from pathlib import Path
 
 from PIL import Image, ImageOps, ImageStat
 
+from unfade.i18n import N_
+
 
 def file_hash(path: Path) -> str:
     digest = hashlib.sha256()
@@ -37,9 +39,9 @@ def outlier_buckets(metrics: dict[str, tuple[float, float]], groups) -> dict[str
         for member in members:
             light, cast = metrics[member]
             if light < median_light - 65:
-                buckets[member] = "mahdollisesti tumma · tarkista"
+                buckets[member] = N_("possibly dark · check")
             elif light > median_light + 65:
-                buckets[member] = "mahdollisesti vaalea · tarkista"
+                buckets[member] = N_("possibly light · check")
             elif cast > median_cast + 45:
-                buckets[member] = "poikkeavat värit · tarkista"
+                buckets[member] = N_("unusual colours · check")
     return buckets

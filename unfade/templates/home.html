@@ -1,109 +1,111 @@
 <!doctype html>
-<html lang="fi">
+<html lang="{{ lang }}">
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Värikorjaus</title>
+  <title>{{ t("Colour correction") }}</title>
   <link rel="stylesheet" href="/static/board.css?v={{ asset_version() }}">
   <link rel="stylesheet" href="/static/unfade.css?v={{ asset_version() }}">
 </head>
 <body>
 <main class="page">
-  <h1>Värikorjaus</h1>
-  <p class="hint">Haalistuneiden valokuvien värikorjaus omana työkalunaan. Lähde on paikallinen kansio tai Immichin kansio, tunniste tai albumi; korjatut kopiot menevät paikalliseen kansioon tai Immichiin. Alkuperäisiä kuvia ei muokata.</p>
+  {% include "language.html" %}
+  <h1>{{ t("Colour correction") }}</h1>
+  <p class="hint">{{ t("Colour correction for faded photos. The source is a local folder or an Immich folder, tag or album; corrected copies go to a local folder or to Immich. Originals are never modified.") }}</p>
   {% if error %}<section class="warning" role="alert">{{ error }}</section>{% endif %}
 
   {% if jobs %}
   <section class="card">
-    <h2>Työt</h2>
+    <h2>{{ t("Jobs") }}</h2>
     <ul class="job-list">{% for job in jobs %}
       <li><a href="/jobs/{{ job.id }}"><strong>{{ source_label(job.source) }}</strong> → {{ destination_label(job.destination) }}</a>
-        <span class="hint">{{ job['items']|length }} kuvaa · {{ job.groups|length }} ryhmää · luotu {{ job.created[:16]|replace('T', ' ') }}{% if job.export.state == 'done' %} · viety {{ job.export.finished[:16]|replace('T', ' ') }}{% elif job.export.state == 'running' %} · vienti käynnissä{% endif %}</span>
-        <form action="/jobs/{{ job.id }}/delete" method="post" class="inline"><button class="secondary" aria-label="Poista työ {{ source_label(job.source) }}">Poista työ</button></form>
+        <span class="hint">{{ t("{images} images · {groups} groups · created {created}", images=job['items']|length, groups=job.groups|length, created=job.created[:16]|replace('T', ' ')) }}{% if job.export.state == 'done' %} · {{ t("exported {time}", time=job.export.finished[:16]|replace('T', ' ')) }}{% elif job.export.state == 'running' %} · {{ t("export running") }}{% endif %}</span>
+        <form action="/jobs/{{ job.id }}/delete" method="post" class="inline"><button class="secondary" aria-label="{{ t("Delete job {name}", name=source_label(job.source)) }}">{{ t("Delete job") }}</button></form>
       </li>{% endfor %}
     </ul>
-    <p class="hint">Työn poisto ei poista lähdekuvia eikä vietyjä kopioita.</p>
+    <p class="hint">{{ t("Deleting a job deletes neither the source images nor the exported copies.") }}</p>
   </section>
   {% endif %}
 
   <form class="card" action="/jobs" method="post" id="job-form">
-    <h2>Uusi työ</h2>
-    {% if not immich.available %}<p class="hint">Immich ei ole käytettävissä: {{ immich.reason }}</p>{% else %}<p class="hint">Immich yhdistetty{% if immich.user %} käyttäjänä {{ immich.user }}{% endif %}.</p>{% endif %}
+    <h2>{{ t("New job") }}</h2>
+    {% if not immich.available %}<p class="hint">{{ t("Immich is not available:") }} {{ immich.reason }}</p>{% else %}<p class="hint">{% if immich.user %}{{ t("Connected to Immich as {user}.", user=immich.user) }}{% else %}{{ t("Connected to Immich.") }}{% endif %}</p>{% endif %}
 
     <fieldset class="side" data-kind-group="source_kind">
-      <legend>1. Lähde</legend>
+      <legend>{{ t("1. Source") }}</legend>
       <div class="kind-options">
-        {% for value, label in (('local', 'Paikallinen kansio'), ('immich-folder', 'Immich-kansio'), ('immich-tag', 'Immich-tunniste'), ('immich-album', 'Immich-albumi')) %}
-        <label class="kind-option"><input type="radio" name="source_kind" value="{{ value }}"{% if form.source_kind == value %} checked{% endif %}{% if value != 'local' and not immich.available %} disabled{% endif %}> {{ label }}</label>
+        {% for value, label in (('local', 'Local folder'), ('immich-folder', 'Immich folder'), ('immich-tag', 'Immich tag'), ('immich-album', 'Immich album')) %}
+        <label class="kind-option"><input type="radio" name="source_kind" value="{{ value }}"{% if form.source_kind == value %} checked{% endif %}{% if value != 'local' and not immich.available %} disabled{% endif %}> {{ t(label) }}</label>
         {% endfor %}
       </div>
       <div data-kind="local">
-        <label>Kansio<input name="source_path" id="source-path" value="{{ form.source_path or '' }}" placeholder="{{ roots[0] }}/kuvat" data-folder-input></label>
+        <label>{{ t("Folder") }}<input name="source_path" id="source-path" value="{{ form.source_path or '' }}" placeholder="{{ roots[0] }}/{{ t('photos') }}" data-folder-input></label>
         <div class="folder-picker" data-folder-picker="source-path"></div>
-        <label class="check"><input type="checkbox" name="source_recursive"{% if form.source_recursive %} checked{% endif %}> Myös alikansiot</label>
+        <label class="check"><input type="checkbox" name="source_recursive"{% if form.source_recursive %} checked{% endif %}> {{ t("Include subfolders") }}</label>
       </div>
       {% if immich.available %}
       <div data-kind="immich-folder">
-        <label>Immich-kansio<input name="immich_folder" list="immich-folders" value="{{ form.immich_folder or '' }}" placeholder="Aloita kirjoittaa polkua"></label>
+        <label>{{ t("Immich folder") }}<input name="immich_folder" list="immich-folders" value="{{ form.immich_folder or '' }}" placeholder="{{ t('Start typing a path') }}"></label>
         <datalist id="immich-folders">{% for folder in immich.folders %}<option value="{{ folder }}">{% endfor %}</datalist>
-        <label class="check"><input type="checkbox" name="immich_folder_recursive"{% if form.immich_folder_recursive %} checked{% endif %}> Myös alikansiot</label>
+        <label class="check"><input type="checkbox" name="immich_folder_recursive"{% if form.immich_folder_recursive %} checked{% endif %}> {{ t("Include subfolders") }}</label>
       </div>
       <div data-kind="immich-tag">
-        <label>Tunniste<select name="immich_tag"><option value="">Valitse tunniste</option>{% for tag in immich.tags %}<option value="{{ tag.id }}"{% if form.immich_tag == tag.id %} selected{% endif %}>{{ tag.value }}</option>{% endfor %}</select></label>
+        <label>{{ t("Tag") }}<select name="immich_tag"><option value="">{{ t("Choose a tag") }}</option>{% for tag in immich.tags %}<option value="{{ tag.id }}"{% if form.immich_tag == tag.id %} selected{% endif %}>{{ tag.value }}</option>{% endfor %}</select></label>
       </div>
       <div data-kind="immich-album">
-        <label>Albumi<select name="immich_album"><option value="">Valitse albumi</option>{% for album in immich.albums %}<option value="{{ album.id }}"{% if form.immich_album == album.id %} selected{% endif %}>{{ album.albumName }} ({{ album.assetCount }})</option>{% endfor %}</select></label>
+        <label>{{ t("Album") }}<select name="immich_album"><option value="">{{ t("Choose an album") }}</option>{% for album in immich.albums %}<option value="{{ album.id }}"{% if form.immich_album == album.id %} selected{% endif %}>{{ album.albumName }} ({{ album.assetCount }})</option>{% endfor %}</select></label>
       </div>
       {% endif %}
     </fieldset>
 
     <fieldset class="side" data-kind-group="destination_kind">
-      <legend>2. Kohde</legend>
+      <legend>{{ t("2. Destination") }}</legend>
       <div class="kind-options">
-        <label class="kind-option"><input type="radio" name="destination_kind" value="local"{% if form.destination_kind == 'local' %} checked{% endif %}> Paikallinen kansio</label>
-        <label class="kind-option"><input type="radio" name="destination_kind" value="immich"{% if form.destination_kind == 'immich' %} checked{% endif %}{% if not immich.available %} disabled{% endif %}> Immich (tunniste tai albumi)</label>
+        <label class="kind-option"><input type="radio" name="destination_kind" value="local"{% if form.destination_kind == 'local' %} checked{% endif %}> {{ t("Local folder") }}</label>
+        <label class="kind-option"><input type="radio" name="destination_kind" value="immich"{% if form.destination_kind == 'immich' %} checked{% endif %}{% if not immich.available %} disabled{% endif %}> {{ t("Immich (tag or album)") }}</label>
       </div>
       <div data-kind="local">
-        <label>Kansio<input name="destination_path" id="destination-path" value="{{ form.destination_path or '' }}" placeholder="{{ roots[0] }}/korjatut" data-folder-input></label>
+        <label>{{ t("Folder") }}<input name="destination_path" id="destination-path" value="{{ form.destination_path or '' }}" placeholder="{{ roots[0] }}/{{ t('corrected') }}" data-folder-input></label>
         <div class="folder-picker" data-folder-picker="destination-path"></div>
-        <p class="hint">Puuttuva kansio luodaan. Immich-kansioon viet valitsemalla kansion, jota Immichin ulkoinen kirjasto seuraa.</p>
-        <label>Nimen pääte (vapaaehtoinen)<input name="destination_suffix" value="{{ form.destination_suffix or '' }}" maxlength="40" placeholder="-korjattu"></label>
-        <label class="check"><input type="checkbox" name="keep_folders"{% if form.keep_folders %} checked{% endif %}> Säilytä alikansiot</label>
+        <p class="hint">{{ t("A missing folder is created. To export into an Immich folder, choose a folder that an Immich external library watches.") }}</p>
+        <label>{{ t("File name suffix (optional)") }}<input name="destination_suffix" value="{{ form.destination_suffix or '' }}" maxlength="40" placeholder="{{ t('-corrected') }}"></label>
+        <label class="check"><input type="checkbox" name="keep_folders"{% if form.keep_folders %} checked{% endif %}> {{ t("Keep subfolders") }}</label>
       </div>
       {% if immich.available %}
       <div data-kind="immich">
-        <label>Tunniste korjatuille kuville<input name="destination_tag" list="immich-tags" value="{{ form.destination_tag or '' }}" placeholder="Esim. Kuvat/Korjattu"></label>
+        <label>{{ t("Tag for corrected images") }}<input name="destination_tag" list="immich-tags" value="{{ form.destination_tag or '' }}" placeholder="{{ t('For example Photos/Corrected') }}"></label>
         <datalist id="immich-tags">{% for tag in immich.tags %}<option value="{{ tag.value }}">{% endfor %}</datalist>
-        <p class="hint">Uusi tunniste luodaan. Alatunniste kirjoitetaan kauttaviivalla, esim. Kuvat/Korjattu.</p>
-        <label>Albumi (vapaaehtoinen)<select name="destination_album"><option value="">Ei albumia</option>{% for album in immich.albums %}<option value="{{ album.id }}"{% if form.destination_album == album.id %} selected{% endif %}>{{ album.albumName }}</option>{% endfor %}</select></label>
-        <fieldset class="original-mode"><legend>Alkuperäinen Immichissä (vain Immich-lähteelle)</legend>
-          <label class="check"><input type="radio" name="original_mode" value="stack"{% if form.original_mode == 'stack' %} checked{% endif %}> Pinoa korjattu alkuperäisen kanssa (korjattu päällimmäisenä)</label>
-          <label class="check"><input type="radio" name="original_mode" value="replace"{% if form.original_mode == 'replace' %} checked{% endif %}> Korvaa alkuperäinen korjatulla</label>
-          <label class="check"><input type="radio" name="original_mode" value="separate"{% if form.original_mode == 'separate' %} checked{% endif %}> Erillinen kuva, alkuperäinen ennallaan</label>
-          <p class="hint">Korvatessa korjattu kuva saa alkuperäisen albumit, tunnisteet, jakolinkit, pinon, suosikkimerkinnän, arvion, kuvauksen, päiväyksen ja sijainnin, ja alkuperäinen siirtyy Immichin roskakoriin. Sieltä sen voi palauttaa, kunnes roskakori tyhjennetään; sen jälkeen korjauksen ohjetta ei voi enää laskea uudelleen ilman muualla säilytettyä masteria. Ulkoisen kirjaston alkuperäistä ei poisteta. Henkilöt tunnistetaan uudelleen; kommentit ja muistot eivät siirry.</p>
+        <p class="hint">{{ t("A new tag is created. Write a child tag with a slash, for example Photos/Corrected.") }}</p>
+        <label>{{ t("Album (optional)") }}<select name="destination_album"><option value="">{{ t("No album") }}</option>{% for album in immich.albums %}<option value="{{ album.id }}"{% if form.destination_album == album.id %} selected{% endif %}>{{ album.albumName }}</option>{% endfor %}</select></label>
+        <fieldset class="original-mode"><legend>{{ t("The original in Immich (Immich sources only)") }}</legend>
+          <label class="check"><input type="radio" name="original_mode" value="stack"{% if form.original_mode == 'stack' %} checked{% endif %}> {{ t("Stack the corrected copy with the original (copy on top)") }}</label>
+          <label class="check"><input type="radio" name="original_mode" value="replace"{% if form.original_mode == 'replace' %} checked{% endif %}> {{ t("Replace the original with the corrected copy") }}</label>
+          <label class="check"><input type="radio" name="original_mode" value="separate"{% if form.original_mode == 'separate' %} checked{% endif %}> {{ t("Separate image, original left as it is") }}</label>
+          <p class="hint">{{ t("When replacing, the corrected copy takes over the original's albums, tags, shared links, stack, favourite, rating, description, date and location, and the original moves to Immich's trash. It can be restored from there until the trash is emptied; after that the recipe can no longer be recomputed without a master kept elsewhere. An original in an external library is not deleted. People are detected again; comments and memories do not move.") }}</p>
         </fieldset>
-        <label class="check"><input type="checkbox" name="copy_details"{% if form.copy_details %} checked{% endif %}> Kopioi alkuperäisen albumit, tunnisteet, suosikki, arvio, kuvaus, päiväys ja sijainti (vain Immich-lähteelle)</label>
-        <label class="check"><input type="checkbox" name="replace_previous"{% if form.replace_previous %} checked{% endif %}> Siirrä saman kuvan aiempi korjattu kopio Immichin roskakoriin, kun uusi on viety</label>
-        <p class="hint">Koskee vain unfadein tekemiä kopioita, ei alkuperäistä. Korvaustilassa aiempi kopio korvataan aina.</p>
-        <p class="hint">Immich päättää ladatun kuvan tallennuspolun itse, joten Immich-kohteessa valitaan tunniste tai albumi. Alkuperäinen kuva jää Immichiin ennalleen.</p>
+        <label class="check"><input type="checkbox" name="copy_details"{% if form.copy_details %} checked{% endif %}> {{ t("Copy the original's albums, tags, favourite, rating, description, date and location (Immich sources only)") }}</label>
+        <label class="check"><input type="checkbox" name="replace_previous"{% if form.replace_previous %} checked{% endif %}> {{ t("Move the earlier corrected copy of the same image to Immich's trash once the new one is exported") }}</label>
+        <p class="hint">{{ t("Applies only to copies made by unfade, never to the original. In replace mode the earlier copy is always replaced.") }}</p>
+        <p class="hint">{{ t("Immich picks the storage path of an upload itself, so an Immich destination is a tag or an album.") }}</p>
       </div>
       {% endif %}
-      <fieldset class="format"><legend>Tallennusmuoto</legend>
-        {% for key, label in formats.items() %}<label class="check"><input type="radio" name="format" value="{{ key }}"{% if form.format == key %} checked{% endif %}> {{ label }}</label>{% endfor %}
-        <p class="hint">JPEG XL on häviötön ja 16-bittinen. Jos lähteellä on muu kuin sRGB-väriprofiili, kuva tallennetaan häviöttömänä 16-bittisenä PNG:nä, jotta profiili säilyy. Jokaiseen kopioon kirjataan XMP-tietoihin korjauksen ohje ja alkuperäisen tunniste, joten kopion voi laskea uudelleen alkuperäisestä.</p>
+      <fieldset class="format"><legend>{{ t("File format") }}</legend>
+        {% for key, label in formats.items() %}<label class="check"><input type="radio" name="format" value="{{ key }}"{% if form.format == key %} checked{% endif %}> {{ t(label) }}</label>{% endfor %}
+        <p class="hint">{{ t("JPEG XL is lossless and 16-bit. A source with a colour profile other than sRGB is saved as a lossless 16-bit PNG, so the profile is kept. Every copy records the correction recipe and the original's identity in its XMP, so it can be recomputed from the original.") }}</p>
       </fieldset>
     </fieldset>
 
     <fieldset class="side">
-      <legend>3. Ryhmät ja menetelmä</legend>
-      <label class="check"><input type="checkbox" name="suggest_groups"{% if form.suggest_groups %} checked{% endif %}> Ehdota ryhmät: kansio kerrallaan, selvästi poikkeava kirkkaus tai väri omaan tarkistettavaan ryhmään</label>
+      <legend>{{ t("3. Groups and method") }}</legend>
+      <label class="check"><input type="checkbox" name="suggest_groups"{% if form.suggest_groups %} checked{% endif %}> {{ t("Suggest groups: one per folder, with clearly different brightness or colour in a review group of its own") }}</label>
       <div class="method-options">{% for key, (name, description) in methods.items() %}
-        <label class="method-option"><input type="radio" name="method" value="{{ key }}"{% if form.method == key %} checked{% endif %}><span><strong>{{ name }}{% if key == 'fade' %} · oletus{% endif %}</strong><small>{{ description }}</small></span></label>
+        <label class="method-option"><input type="radio" name="method" value="{{ key }}"{% if form.method == key %} checked{% endif %}><span><strong>{{ name }}{% if key == 'fade' %} · {{ t("default") }}{% endif %}</strong><small>{{ t(description) }}</small></span></label>
       {% endfor %}</div>
-      <p class="hint">Ryhmiä voi muokata ja kunkin ryhmän menetelmän vaihtaa esikatselussa.</p>
+      <p class="hint">{{ t("Groups can be edited, and each group's method changed, in the preview.") }}</p>
     </fieldset>
-    <button>Luo työ ja avaa esikatselu</button>
+    <button>{{ t("Create the job and open the preview") }}</button>
   </form>
-  <p class="hint">Sallitut paikalliset kansiot: {{ roots|join(', ') }} (ympäristömuuttuja UNFADE_ROOTS).</p>
+  <p class="hint">{{ t("Allowed local folders: {roots} (environment variable UNFADE_ROOTS).", roots=roots|join(', ')) }}</p>
 </main>
+{% include "texts.html" %}
 <script src="/static/unfade.js?v={{ asset_version() }}" defer></script>
 </body></html>

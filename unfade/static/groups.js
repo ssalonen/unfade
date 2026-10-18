@@ -1,6 +1,7 @@
 (() => {
   const section = document.querySelector('[data-group-board]');
   if (!section) return;
+  const t = (text, values = {}) => ((window.unfadeText || {})[text] || text).replace(/\{(\w+)\}/g, (_, key) => values[key]);
   const board = document.getElementById('group-board');
   const addCard = document.getElementById('add-group-card');
   const target = document.getElementById('move-target');
@@ -25,9 +26,10 @@
   const cards = () => [...board.querySelectorAll('.image-card')];
   const body = group => group.querySelector('.group-body');
   const marker = group => group.querySelector('.group-empty');
-  const name = group => group.dataset.groupLabel;
+  // The shown (translated) name; data-group-label keeps the stored one for saving.
+  const name = group => group.querySelector('h3').textContent;
   const groupForKey = key => groups().find(group => group.dataset.groupKey === key);
-  const countLabel = count => `${count} ${count === 1 ? 'kuva' : 'kuvaa'}`;
+  const countLabel = count => count === 1 ? t('1 image') : t('{count} images', {count});
   // unfade keys cards by a sortable index and shows the file name instead.
   const title = card => card.dataset.label || card.dataset.itemId;
 
@@ -53,11 +55,11 @@
       group.querySelector('.group-count').textContent = countLabel(members.length);
       group.querySelector('.delete-group').disabled = currentGroups.length === 1;
       const changedMembers = members.map(card => card.dataset.itemId).sort().join('|') !== initialMembers[group.dataset.groupKey];
-      if (changedMembers && group.dataset.approved === '1') group.querySelector('.group-approval').textContent = 'hyväksyntä raukeaa tallennettaessa';
-      else group.querySelector('.group-approval').textContent = group.dataset.approved === '1' ? '✓ hyväksytty' : 'odottaa hyväksyntää';
+      if (changedMembers && group.dataset.approved === '1') group.querySelector('.group-approval').textContent = t('approval is withdrawn on saving');
+      else group.querySelector('.group-approval').textContent = group.dataset.approved === '1' ? `✓ ${t('approved')}` : t('awaiting approval');
     });
     const selected = cards().filter(card => card.querySelector('.image-pick').checked).length;
-    document.getElementById('selection-count').textContent = `${countLabel(selected)} valittu`;
+    document.getElementById('selection-count').textContent = selected === 1 ? t('1 image selected') : t('{count} images selected', {count: selected});
     moveButton.disabled = selected === 0;
     undoButton.disabled = undoStack.length === 0;
     redoButton.disabled = redoStack.length === 0;
@@ -69,7 +71,7 @@
       button.disabled = dirty || button.dataset.initiallyDisabled === '1';
     });
     section.classList.toggle('has-unsaved-groups', dirty);
-    if (dirty && !status.dataset.error) status.textContent = 'Tallentamattomia ryhmämuutoksia. Undo ja Redo toimivat tallennukseen asti.';
+    if (dirty && !status.dataset.error) status.textContent = t('Unsaved group changes. Undo and Redo work until you save.');
     if (!dirty && !status.dataset.error) status.textContent = '';
   }
   function execute(command) {
@@ -95,7 +97,7 @@
     const origins = moved.map(card => ({card, parent: card.parentElement, next: card.nextSibling,
       selected: card.querySelector('.image-pick').checked}));
     execute({
-      message: `${countLabel(moved.length)} siirretty ryhmään ${name(destination)}.`,
+      message: t('{images} moved to group {target}.', {images: countLabel(moved.length), target: name(destination)}),
       redo() { moved.forEach(card => { body(destination).insertBefore(card, marker(destination)); card.querySelector('.image-pick').checked = false; }); },
       undo() { [...origins].reverse().forEach(({card, parent, next, selected}) => {
         parent.insertBefore(card, next && next.parentElement === parent ? next : parent.querySelector('.group-empty'));
@@ -110,11 +112,16 @@
     const key = `new-${newGroupNumber++}`;
     const group = document.createElement('section');
     group.className = 'color-group'; group.dataset.groupKey = key; group.dataset.groupLabel = label; group.dataset.approved = '0';
-    group.innerHTML = '<header class="color-group-head"><span class="eyebrow">Oma ryhmä</span><h3></h3><p><span class="group-count">0 kuvaa</span> · <span class="group-approval">odottaa hyväksyntää</span></p><button type="button" class="delete-group" title="Poista ryhmä"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 11v6M14 11v6"/></svg></button></header><div class="group-body"><p class="group-empty">Pudota dioja tähän ryhmään</p></div>';
+    group.innerHTML = '<header class="color-group-head"><span class="eyebrow"></span><h3></h3><p><span class="group-count"></span> · <span class="group-approval"></span></p><button type="button" class="delete-group"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 11v6M14 11v6"/></svg></button></header><div class="group-body"><p class="group-empty"></p></div>';
+    group.querySelector('.eyebrow').textContent = t('Own group');
+    group.querySelector('.group-count').textContent = countLabel(0);
+    group.querySelector('.group-approval').textContent = t('awaiting approval');
+    group.querySelector('.delete-group').title = t('Delete group');
+    group.querySelector('.group-empty').textContent = t('Drop images into this group');
     group.querySelector('h3').textContent = label;
-    group.querySelector('.delete-group').setAttribute('aria-label', `Poista ryhmä ${label}`);
+    group.querySelector('.delete-group').setAttribute('aria-label', t('Delete group {name}', {name: label}));
     const option = document.createElement('option'); option.value = key; option.textContent = label;
-    execute({message: `Ryhmä ${label} lisätty.`,
+    execute({message: t('Group {name} added.', {name: label}),
       redo() { board.insertBefore(group, addCard); target.appendChild(option); target.value = key; },
       undo() { group.remove(); option.remove(); },
     });
@@ -124,7 +131,7 @@
     const option = [...target.options].find(item => item.value === group.dataset.groupKey);
     const groupNext = group.nextSibling, optionNext = option.nextSibling;
     const contents = [...body(group).querySelectorAll('.image-card')].map(card => ({card, selected: card.querySelector('.image-pick').checked}));
-    execute({message: `Ryhmä ${name(group)} poistettu${contents.length ? `; ${countLabel(contents.length)} siirretty ryhmään ${name(destination)}` : ''}.`,
+    execute({message: contents.length ? t('Group {name} deleted; {images} moved to group {target}.', {name: name(group), images: countLabel(contents.length), target: name(destination)}) : t('Group {name} deleted.', {name: name(group)}),
       redo() {
         contents.forEach(({card}) => { body(destination).insertBefore(card, marker(destination)); card.querySelector('.image-pick').checked = false; });
         group.remove(); option.remove();
@@ -143,8 +150,8 @@
     const count = body(group).querySelectorAll('.image-card').length;
     if (!count) { deleteGroup(group, alternatives[0]); return; }
     pendingDelete = group;
-    document.getElementById('delete-title').textContent = `Poista ${name(group)}?`;
-    document.getElementById('delete-explanation').textContent = `${countLabel(count)} kuuluu tähän ryhmään. Valitse ryhmä, johon ne siirretään. Undo palauttaa ryhmän ja sen kuvat.`;
+    document.getElementById('delete-title').textContent = t('Delete {name}?', {name: name(group)});
+    document.getElementById('delete-explanation').textContent = t('{images} belong to this group. Choose the group to move them to. Undo brings back the group and its images.', {images: countLabel(count)});
     document.getElementById('delete-target').replaceChildren(...alternatives.map(item => {
       const option = document.createElement('option'); option.value = item.dataset.groupKey; option.textContent = name(item); return option;
     }));
@@ -154,11 +161,11 @@
     const src = kind === 'preview' ? card.dataset.preview : card.dataset.original;
     if (!src) return;
     activeCard = card; activeImageKind = kind;
-    document.getElementById('modal-id').textContent = `${title(card)} · ${kind === 'preview' ? 'korjauksen esikatselu' : 'alkuperäinen'}`;
+    document.getElementById('modal-id').textContent = `${title(card)} · ${kind === 'preview' ? t('corrected preview') : t('original')}`;
     document.getElementById('modal-image').src = src;
-    document.getElementById('modal-image').alt = `${title(card)} ${kind === 'preview' ? 'korjauksen esikatselu' : 'alkuperäinen'}`;
-    document.getElementById('modal-group').textContent = `Ryhmä: ${name(card.closest('.color-group'))}`;
-    document.getElementById('modal-note').textContent = card.dataset.note || 'Ei erillistä värihuomiota.';
+    document.getElementById('modal-image').alt = `${title(card)} ${kind === 'preview' ? t('corrected preview') : t('original')}`;
+    document.getElementById('modal-group').textContent = t('Group: {name}', {name: name(card.closest('.color-group'))});
+    document.getElementById('modal-note').textContent = card.dataset.note || '';
     const order = cards().sort((a, b) => a.dataset.itemId.localeCompare(b.dataset.itemId));
     const index = order.indexOf(card);
     document.getElementById('modal-prev').disabled = index === 0;
@@ -201,7 +208,7 @@
     const inner = document.createElement('div'); inner.className = 'drag-ghost-inner';
     const thumb = card.querySelector('.thumbnail-open img');
     if (thumb) inner.appendChild(thumb.cloneNode(true));
-    const label = document.createElement('strong'); label.textContent = draggedCards.length === 1 ? title(card) : 'Valitut kuvat'; inner.appendChild(label);
+    const label = document.createElement('strong'); label.textContent = draggedCards.length === 1 ? title(card) : t('Selected images'); inner.appendChild(label);
     const count = document.createElement('span'); count.textContent = countLabel(draggedCards.length);
     dragGhost.append(inner, count);
     const origin = card.getBoundingClientRect(); dragGhost.style.left = `${Math.max(0, origin.left)}px`; dragGhost.style.top = `${Math.max(0, origin.top)}px`;
@@ -249,7 +256,7 @@
   document.querySelectorAll('[data-requires-saved-grouping] form').forEach(form => form.addEventListener('submit', event => {
     if (JSON.stringify(snapshot()) !== initialState) {
       event.preventDefault();
-      status.textContent = 'Tallenna ryhmämuutokset ennen säätöjä tai vientiä.';
+      status.textContent = t('Save the group changes before adjusting or exporting.');
       document.getElementById('groups').scrollIntoView({block: 'start'});
     }
   }));
@@ -257,16 +264,16 @@
     event.preventDefault();
     if (saveButton.disabled) return;
     saveForm.elements.namedItem('state').value = JSON.stringify(snapshot());
-    saving = true; refresh(); status.textContent = 'Tallennetaan ryhmiä…';
+    saving = true; refresh(); status.textContent = t('Saving groups…');
     try {
       const response = await fetch(saveForm.action, {method: 'POST', body: new FormData(saveForm)});
       if (!response.ok) {
         const problem = await response.json();
-        throw new Error(problem.detail || 'Tallennus epäonnistui');
+        throw new Error(problem.detail || t('Saving failed'));
       }
       window.location.assign(response.url);
     } catch (error) {
-      saving = false; status.dataset.error = '1'; status.textContent = error.message || 'Tallennus epäonnistui'; refresh();
+      saving = false; status.dataset.error = '1'; status.textContent = error.message || t('Saving failed'); refresh();
     }
   });
   window.addEventListener('beforeunload', event => {

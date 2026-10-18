@@ -1,0 +1,1 @@
+<nav class="language" aria-label="{{ t('Language') }}">{% for code, name in languages.items() %}{% if code == lang %}<strong lang="{{ code }}" aria-current="true">{{ name }}</strong>{% else %}<a href="?lang={{ code }}" lang="{{ code }}" hreflang="{{ code }}">{{ name }}</a>{% endif %}{% if not loop.last %} · {% endif %}{% endfor %}</nav>

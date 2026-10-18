@@ -107,7 +107,7 @@ def unfade_server(library, tmp_path):
 def test_unfade_ui_job_from_immich_tag_to_immich(library, unfade_server, browser, artifacts):
     page = browser.new_page(viewport={"width": 1400, "height": 1000})
     page.goto(unfade_server)
-    assert "Immich yhdistetty käyttäjänä Testi Käyttäjä" in page.locator("body").inner_text()
+    assert "Connected to Immich as Testi Käyttäjä" in page.locator("body").inner_text()
     page.check("input[name=source_kind][value=immich-tag]")
     page.select_option("select[name=immich_tag]", label="Kuvat/K001")
     page.check("input[name=destination_kind][value=immich]")
@@ -124,16 +124,17 @@ def test_unfade_ui_job_from_immich_tag_to_immich(library, unfade_server, browser
     page.click("form[action$='/approve'] button")
     page.wait_for_url("**saved=all**")
     page.click("#export button")
-    page.wait_for_function("document.querySelector('#export-status').textContent.includes('valmis')", timeout=60000)
+    page.wait_for_function("document.querySelector('#export-status').textContent.includes('finished')", timeout=60000)
     page.screenshot(path=f"{artifacts}/exported.png", full_page=True)
-    assert "kirjoitettu 2" in page.locator("#export-status").inner_text()
+    assert "written 2" in page.locator("#export-status").inner_text()
     harness.wait_for_jobs(library["account"].url, library["admin"])
     tagged = library["api"].post("/search/metadata", json={"originalFileName": ".jxl", "size": 10}).json()["assets"]["items"]
     assert sorted(asset["originalFileName"] for asset in tagged) == ["K001-0001.jxl", "K001-0002.jxl"]
 
 
-def test_previews_survive_a_dropped_first_request(tmp_path, monkeypatch, browser, artifacts):
-    """Every preview's first request is aborted, as on a flaky connection; the cards still render."""
+@pytest.fixture
+def local_server(tmp_path):
+    """unfade's web UI without Immich, with two faded photos in tmp_path/scans."""
     scans = tmp_path / "scans"
     scans.mkdir()
     for n in (1, 2):
@@ -151,25 +152,64 @@ def test_previews_survive_a_dropped_first_request(tmp_path, monkeypatch, browser
                 break
             except httpx.HTTPError:
                 time.sleep(0.2)
-        page = browser.new_page(viewport={"width": 1400, "height": 1000})
-        page.goto(url)
-        page.fill("#source-path", str(scans))
-        page.fill("#destination-path", str(tmp_path / "out"))
-        page.click("#job-form > button")
-        page.wait_for_url("**/jobs/*")
-        dropped = set()
-
-        def flaky(route):
-            if route.request.url not in dropped and "retry=" not in route.request.url:
-                dropped.add(route.request.url)
-                route.abort("connectionreset")
-            else:
-                route.continue_()
-        page.route("**/preview/**", flaky)
-        page.reload()
-        page.wait_for_function("[...document.querySelectorAll('.clip-badge')].every(b => b.textContent.includes('leikkautuu'))", timeout=20000)
-        page.screenshot(path=f"{artifacts}/previews-after-drops.png", full_page=True)
-        assert dropped and "esikatselu puuttuu" not in page.locator("body").inner_text()
+        yield url, scans
     finally:
         process.terminate()
         process.wait(10)
+
+
+def create_local_job(page, url, scans):
+    page.goto(url)
+    page.fill("#source-path", str(scans))
+    page.fill("#destination-path", str(scans.parent / "out"))
+    page.click("#job-form > button")
+    page.wait_for_url("**/jobs/*")
+
+
+def test_previews_survive_a_dropped_first_request(local_server, browser, artifacts):
+    """Every preview's first request is aborted, as on a flaky connection; the cards still render."""
+    url, scans = local_server
+    page = browser.new_page(viewport={"width": 1400, "height": 1000})
+    create_local_job(page, url, scans)
+    dropped = set()
+
+    def flaky(route):
+        if route.request.url not in dropped and "retry=" not in route.request.url:
+            dropped.add(route.request.url)
+            route.abort("connectionreset")
+        else:
+            route.continue_()
+    page.route("**/preview/**", flaky)
+    page.reload()
+    page.wait_for_function("[...document.querySelectorAll('.clip-badge')].every(b => b.textContent.includes('clips'))", timeout=20000)
+    page.screenshot(path=f"{artifacts}/previews-after-drops.png", full_page=True)
+    assert dropped and "preview missing" not in page.locator("body").inner_text()
+
+
+def test_finnish_from_the_browser_and_the_language_switch(local_server, browser, artifacts):
+    """A Finnish browser gets the Finnish UI, scripts included; the switch changes it and is remembered."""
+    url, scans = local_server
+    context = browser.new_context(locale="fi-FI", viewport={"width": 1400, "height": 1000})
+    page = context.new_page()
+    create_local_job(page, url, scans)
+    page.wait_for_function("[...document.querySelectorAll('.clip-badge')].every(b => b.textContent.includes('leikkautuu'))", timeout=20000)
+    body = page.locator("body").inner_text()
+    assert page.locator("html").get_attribute("lang") == "fi"
+    assert "Järjestä värikorjausryhmät" in body and "Vie hyväksytyt kuvat" in body and "2 kuvaa" in body
+    # Text written by the scripts: the selection count and the clipping badges, with a decimal comma.
+    page.locator(".image-pick").first.check()
+    assert page.locator("#selection-count").inner_text() == "1 kuva valittu"
+    page.wait_for_function("document.querySelector('[data-delta-e-original]').textContent.includes(',')", timeout=20000)
+    page.screenshot(path=f"{artifacts}/job-fi.png", full_page=True)
+    page.get_by_role("link", name="English").click()
+    page.wait_for_function("document.documentElement.lang === 'en'")
+    page.wait_for_function("[...document.querySelectorAll('.clip-badge')].every(b => b.textContent.includes('clips'))", timeout=20000)
+    assert "Arrange the correction groups" in page.locator("body").inner_text()
+    page.wait_for_function("document.querySelector('[data-delta-e-original]').textContent.includes('.')", timeout=20000)
+    page.locator(".image-pick").first.check()
+    assert page.locator("#selection-count").inner_text() == "1 image selected"
+    page.screenshot(path=f"{artifacts}/job-en.png", full_page=True)
+    # The choice outlives the browser's own preference.
+    page.goto(url)
+    assert "New job" in page.locator("body").inner_text() and page.locator("html").get_attribute("lang") == "en"
+    context.close()

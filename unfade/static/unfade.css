@@ -6,3 +6,4 @@ label.check{display:flex;align-items:center;gap:.45rem;font-weight:500}label.che
 .job-list{list-style:none;margin:0;padding:0}.job-list li{display:flex;flex-wrap:wrap;align-items:center;gap:.3rem 1rem;padding:.6rem 0;border-top:1px solid #eee}.job-list li a{flex:1 1 18rem;color:inherit}.job-list .hint{flex:1 1 100%;margin:0;font-size:.85rem}form.inline{margin:0}
 .pager{display:flex;gap:1rem;align-items:center;justify-content:center}
 .export-form{display:flex;flex-wrap:wrap;gap:.6rem 1.2rem;align-items:center}.export-errors{color:#8a3c20}.export-warnings{color:#6b4e00}
+.language{text-align:right;font-size:.9rem;margin:.2rem 0 -.6rem}

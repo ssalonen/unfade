@@ -49,6 +49,12 @@ def account(immich_url, admin):
     return harness.new_account(immich_url, admin)
 
 
+@pytest.fixture(autouse=True)
+def english(monkeypatch):
+    """The command line speaks English whatever the machine's locale; the web UI follows the browser."""
+    monkeypatch.setenv("UNFADE_LANG", "en")
+
+
 @pytest.fixture
 def unfade_env(account, tmp_path, monkeypatch):
     """Point unfade at the throwaway Immich as the test's user."""

@@ -129,12 +129,12 @@ def test_archive_index_in_the_browser(library, tmp_path, artifacts):
         assert page.locator("figure img").count() >= 3
         assert page.locator("img").evaluate_all("images => images.every(image => image.naturalWidth > 0)")
         # One view at a time, picked with the buttons; the choice is kept in the address.
-        page.get_by_role("button", name="Albumit (1)").click()
-        assert page.locator("#albumit").is_visible() and not page.locator("#tunnisteet").is_visible()
-        assert page.get_by_role("button", name="Albumit (1)").get_attribute("aria-pressed") == "true" and page.url.endswith("#albumit")
+        page.get_by_role("button", name="Albums (1)").click()
+        assert page.locator("#albums").is_visible() and not page.locator("#tags").is_visible()
+        assert page.get_by_role("button", name="Albums (1)").get_attribute("aria-pressed") == "true" and page.url.endswith("#albums")
         page.screenshot(path=f"{artifacts}/index-albums.png", full_page=True)
-        page.get_by_role("button", name="Tunnisteet (2)").click()
-        assert page.locator("#tunnisteet").is_visible() and not page.locator("#albumit").is_visible()
+        page.get_by_role("button", name="Tags (2)").click()
+        assert page.locator("#tags").is_visible() and not page.locator("#albums").is_visible()
         page.reload()
-        assert page.locator("#tunnisteet").is_visible() and not page.locator("#kaikki").is_visible()
+        assert page.locator("#tags").is_visible() and not page.locator("#all").is_visible()
         browser.close()

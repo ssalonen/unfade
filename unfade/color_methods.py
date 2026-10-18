@@ -14,9 +14,9 @@ from unfade import fade_model
 METHODS = ("fade", "gwg", "pcs")
 DEFAULT_METHOD = "fade"
 METHOD_LABELS = {
-    "fade": ("FADE", "Väriaineiden haalistumismalli. Vähiten leikkautumista."),
-    "gwg": ("GWG", "Venytys ja harmaatasapaino. Poistaa minkä tahansa värivirheen."),
-    "pcs": ("PCS", "Pelkkä kanavakohtainen venytys. Säilyttää alkuperäisen sävyn."),
+    "fade": ("FADE", "Dye-fade model. Clips the least."),
+    "gwg": ("GWG", "Stretch and grey balance. Removes any colour cast."),
+    "pcs": ("PCS", "Per-channel stretch only. Keeps the original tone."),
 }
 
 ADJUSTMENT_LIMITS = {"strength": (0, 100), "black": (-20, 20), "white": (-20, 20), "temperature": (-20, 20)}
@@ -49,7 +49,7 @@ def fit(method: str, sample: np.ndarray) -> dict:
             exponent = np.log(means.mean()) / np.log(means)
         curve = {"kind": method, "low": low.tolist(), "high": high.tolist(), "exponent": exponent.tolist(), "saturation": 1.0}
     else:
-        raise ValueError("Tuntematon korjausmenetelmä")
+        raise ValueError("Unknown correction method")
     return {"table": tables(curve, 256), "saturation": curve["saturation"], "curve": curve}
 
 
@@ -67,9 +67,9 @@ def validate_adjustments(values: dict) -> dict:
         try:
             value = int(values[name])
         except (KeyError, TypeError, ValueError) as error:
-            raise ValueError("Virheellinen säätö") from error
+            raise ValueError("Invalid adjustment") from error
         if not minimum <= value <= maximum:
-            raise ValueError("Säätö on sallitun alueen ulkopuolella")
+            raise ValueError("Adjustment out of range")
         checked[name] = value
     return checked
 

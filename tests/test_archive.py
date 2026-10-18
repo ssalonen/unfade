@@ -61,8 +61,8 @@ def test_rerun_is_additive_and_a_changed_original_stops_it(env, exported):
     assert names == ["A001.jpg", "A002.jpg", "A003.jpg", "sub/B001.png"]
     # An archived original must never silently change: verify flags it and the next run refuses.
     (target / "originals" / "A002.jpg").write_bytes(b"not the original")
-    assert archive.verify(str(target)) == ["muuttunut: originals/A002.jpg"]
-    with pytest.raises(archive.ArchiveError, match="muuttunut"):
+    assert archive.verify(str(target)) == ["changed: originals/A002.jpg"]
+    with pytest.raises(archive.ArchiveError, match="changed"):
         archive.run(source, str(target))
 
 
@@ -71,9 +71,9 @@ def test_archive_refuses_foreign_folders_and_nesting(env):
     other = env / "files" / "other"
     other.mkdir()
     (other / "something.txt").write_text("not an archive")
-    with pytest.raises(archive.ArchiveError, match="ei ole tyhjä"):
+    with pytest.raises(archive.ArchiveError, match="neither empty"):
         archive.run({"kind": "local", "path": str(scans)}, str(other))
-    with pytest.raises(archive.ArchiveError, match="sisäkkäin"):
+    with pytest.raises(archive.ArchiveError, match="inside one another"):
         archive.run({"kind": "local", "path": str(scans)}, str(scans / "archive"))
 
 

@@ -146,7 +146,7 @@ def jxl(pixels: np.ndarray, exif: bytes | None, xmp: bytes | None) -> bytes:
         if size < 8:
             break
         position += size
-    raise ValueError("JPEG XL -säiliötä ei voitu lukea")
+    raise ValueError("Could not read the JPEG XL container")
 
 
 def _chunk(kind: bytes, payload: bytes) -> bytes:

@@ -46,7 +46,7 @@ def test_requests_are_retried_through_drops_and_overload(fake_immich, monkeypatc
 
 def test_retries_stop_and_say_so(fake_immich, monkeypatch):
     use(monkeypatch, Flaky(fake_immich, 99, lambda request: True, cut_off))
-    with pytest.raises(immich.ImmichError, match="8 yritystä"):
+    with pytest.raises(immich.ImmichError, match="8 attempts"):
         immich.client().tags()
 
 
@@ -139,5 +139,5 @@ def test_a_stray_file_that_is_not_the_original_still_stops_the_archive(env):
     manifest["originals"] = [entry for entry in manifest["originals"] if entry["name"] != "A002.jpg"]
     (target / "manifest.json").write_text(json.dumps(manifest))
     (target / "originals" / "A002.jpg").write_bytes(b"something else")
-    with pytest.raises(archive.ArchiveError, match="eikä vastaa alkuperäistä"):
+    with pytest.raises(archive.ArchiveError, match="does not match the original"):
         archive.run(source, str(target))

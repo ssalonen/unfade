@@ -230,7 +230,7 @@ def create(client, **fields):
 
 def test_local_folder_to_local_folder(env):
     client = TestClient(create_app())
-    assert "Immich ei ole käytettävissä" in client.get("/").text
+    assert "Immich is not available" in client.get("/").text
     response = create(client, source_kind="local", source_path=str(env / "files" / "scans"), source_recursive="on",
                       destination_kind="local", destination_path=str(env / "files" / "out"), keep_folders="on", method="fade", suggest_groups="on")
     assert response.status_code == 303
@@ -239,7 +239,7 @@ def test_local_folder_to_local_folder(env):
     assert [item["name"] for item in job["items"]] == ["A001.jpg", "A002.jpg", "sub/B001.png"]
 
     # The top folder and the subfolder are proposed as two groups.
-    assert [(group["label"], jobs.members(job, group["id"])) for group in job["groups"]] == [("Pääkansio", [0, 1]), ("sub", [2])]
+    assert [(group["label"], jobs.members(job, group["id"])) for group in job["groups"]] == [("Top folder", [0, 1]), ("sub", [2])]
 
     page = client.get(f"/jobs/{job_id}")
     assert page.status_code == 200 and "sub/B001.png" in page.text and 'data-item-id="000002"' in page.text
@@ -341,7 +341,7 @@ def test_outliers_get_their_own_review_group(env):
     faded((20, 18, 15)).save(folder / "S9.jpg")
     job = jobs.create({"kind": "local", "path": str(folder)}, {"kind": "local", "path": str(env / "files" / "out")})
     assert [(group["label"], jobs.members(job, group["id"])) for group in job["groups"]] == [
-        ("Kaikki kuvat", [0, 1, 2, 3, 4]), ("mahdollisesti tumma · tarkista", [5])]
+        ("All images", [0, 1, 2, 3, 4]), ("possibly dark · check", [5])]
     plain = jobs.create({"kind": "local", "path": str(folder)}, {"kind": "local", "path": str(env / "files" / "out")}, suggest=False)
     assert len(plain["groups"]) == 1
 
@@ -350,7 +350,7 @@ def test_local_destination_may_not_overwrite_the_originals(env):
     client = TestClient(create_app())
     scans = str(env / "files" / "scans")
     response = create(client, source_kind="local", source_path=scans, destination_kind="local", destination_path=scans, method="fade")
-    assert response.status_code == 422 and "pääte" in response.text
+    assert response.status_code == 422 and "file name suffix" in response.text
     assert create(client, source_kind="local", source_path=scans, destination_kind="local", destination_path=scans,
                   destination_suffix="-korjattu", method="fade").status_code == 303
 
@@ -358,7 +358,7 @@ def test_local_destination_may_not_overwrite_the_originals(env):
 def test_local_folders_stay_inside_allowed_roots(env):
     client = TestClient(create_app())
     response = create(client, source_kind="local", source_path=str(env), destination_kind="local", destination_path=str(env / "files" / "x"))
-    assert response.status_code == 422 and "sallittujen" in response.text
+    assert response.status_code == 422 and "outside the allowed roots" in response.text
     listing = client.get("/api/folders", params={"path": str(env / "files" / "scans")}).json()
     assert listing["dirs"] == ["sub"] and listing["images"] == 2
     assert client.get("/api/folders", params={"path": "/"}).status_code == 422
@@ -367,7 +367,7 @@ def test_local_folders_stay_inside_allowed_roots(env):
 def test_immich_tag_to_immich_tag_and_album(fake_immich, env):
     client = TestClient(create_app())
     home = client.get("/").text
-    assert "Immich yhdistetty käyttäjänä Sami" in home and "Kuvat/K001" in home and "/photos/vanhat" in home
+    assert "Connected to Immich as Sami" in home and "Kuvat/K001" in home and "/photos/vanhat" in home
     response = create(client, source_kind="immich-tag", immich_tag="tag-source",
                       destination_kind="immich", destination_tag="Kuvat/Korjattu", destination_album="album-1", method="fade", original_mode="stack")
     assert response.status_code == 303
@@ -434,7 +434,7 @@ def test_immich_folder_and_album_sources_to_local(fake_immich, env):
 def test_immich_destination_needs_a_tag_or_album(fake_immich, env):
     client = TestClient(create_app())
     response = create(client, source_kind="local", source_path=str(env / "files" / "scans"), destination_kind="immich", destination_tag="")
-    assert response.status_code == 422 and "tunniste tai albumi" in response.text
+    assert response.status_code == 422 and "a tag or an album" in response.text
 
 
 def test_command_line_run(fake_immich, env, capsys):
@@ -443,7 +443,7 @@ def test_command_line_run(fake_immich, env, capsys):
     assert sorted(path.name for path in (env / "files" / "cli").iterdir()) == ["D1-k.jpg", "D2-k.jpg"]
     small = Image.open(env / "files" / "cli" / "D1-k.jpg")
     assert encode.read_recipe(small.info["xmp"])["Method"] == "gwg"
-    assert "Kirjoitettu 2" in capsys.readouterr().out
+    assert "Written 2" in capsys.readouterr().out
 
 
 def test_output_names_do_not_clash():
@@ -610,7 +610,7 @@ def test_replace_previous_keeps_a_recorded_copy_that_names_another_original(fake
     fake_immich.metadata["new-0"]["unfade"]["source"]["immich_asset"] = "someone-else"
     result = jobs.run_export(job["id"], only_approved=False, force=True)["export"]
     assert "new-0" not in fake_immich.trashed and "new-1" in fake_immich.trashed
-    assert any("toiseen alkuperäiseen" in warning for warning in result["warnings"])
+    assert any("another original" in warning for warning in result["warnings"])
 
 
 def test_replace_original_hands_everything_over_and_trashes_the_original(fake_immich, env):
@@ -623,7 +623,7 @@ def test_replace_original_hands_everything_over_and_trashes_the_original(fake_im
     assert "new-0" in fake_immich.album_members["album-2"] and fake_immich.updates["new-0"]["description"] == "Mökillä"
     # The external library's original stays: Immich would not delete its file and would import it again.
     assert fake_immich.trashed == [originals[0]]
-    assert len(result["warnings"]) == 1 and "ulkoisessa kirjastossa" in result["warnings"][0]
+    assert len(result["warnings"]) == 1 and "external library" in result["warnings"][0]
 
     # A re-export takes over from the copy that replaced the original, and replaces it in turn.
     jobs.set_adjustments(job["id"], 0, {"strength": 70, "black": 0, "white": 0, "temperature": 0})
@@ -644,7 +644,7 @@ def test_sources_skip_unfade_copies(fake_immich, env):
 def test_nothing_left_to_correct_after_replacing(fake_immich, env):
     jobs.run_export(jobs.create({"kind": "immich-tag", "name": "Kuvat/K001"}, {"kind": "immich", "tag": "K", "replace_original": True})["id"],
                     only_approved=False)
-    with pytest.raises(ValueError, match="korjattavia"):
+    with pytest.raises(ValueError, match="no images to correct"):
         jobs.create({"kind": "immich-tag", "name": "Kuvat/K001"}, {"kind": "immich", "tag": "K"})
 
 
