@@ -60,6 +60,13 @@ class ImmichServer:
                               env=env, capture_output=True, text=True, timeout=timeout)
 
     def start(self) -> None:
+        # A registry that is busy or rate-limits (429 "toomanyrequests") fails a pull outright;
+        # pull first and try again a few times rather than fail every test on a passing refusal.
+        for pause in (10, 30, 60, None):
+            pulled = self._compose("pull", "--quiet")
+            if not pulled.returncode or pause is None:
+                break
+            time.sleep(pause)
         result = self._compose("up", "-d", "--wait")
         if result.returncode:
             logs = self._compose("logs", "--tail", "80").stdout
