@@ -203,7 +203,7 @@
     event.dataTransfer.effectAllowed = 'move';
     draggedCards.forEach(item => item.classList.add('dragging'));
     source.classList.add('drag-source');
-    groups().forEach(group => { group.dataset.dragCount = countLabel(draggedCards.length); });
+    groups().forEach(group => { group.dataset.dragCount = t('Drop here · {images}', {images: countLabel(draggedCards.length)}); });
     dragGhost = document.createElement('div'); dragGhost.className = 'drag-ghost';
     const inner = document.createElement('div'); inner.className = 'drag-ghost-inner';
     const thumb = card.querySelector('.thumbnail-open img');

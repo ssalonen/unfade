@@ -174,6 +174,7 @@ FI = {
     "original": "alkuperäinen",
     "Group: {name}": "Ryhmä: {name}",
     "Selected images": "Valitut kuvat",
+    "Drop here · {images}": "Pudota tähän · {images}",
     "Save the group changes before adjusting or exporting.": "Tallenna ryhmämuutokset ennen säätöjä tai vientiä.",
     "Saving groups…": "Tallennetaan ryhmiä…",
     "Saving failed": "Tallennus epäonnistui",

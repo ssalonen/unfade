@@ -2,6 +2,10 @@
 
 Colour correction for faded photos, for a local folder or an [Immich](https://immich.app) library.
 
+![unfade in the browser: two rolls of faded photos grouped by folder, each shown faded and corrected; the mountains keep the default FADE method, the coast group switches to GWG, then both are exported](docs/demo.webp)
+
+<sub>Demo photos: CC0 landscapes from Wikimedia Commons, faded for the demo ([credits](docs/demo-photos/CREDITS.md)). `uv run --group e2e python docs/make_demo.py` records the animation again.</sub>
+
 - Three automatic methods (FADE, GWG, PCS), fitted on each image separately, with per-image strength, black point, white point and temperature on top.
 - A web UI to group images, compare methods side by side, see clipping, histograms and ΔE, and approve group by group.
 - Lossless 16-bit output (JPEG XL, or PNG for non-sRGB sources). The full correction recipe is embedded in the copy's XMP, so the copy can be recomputed from the original pixel for pixel.

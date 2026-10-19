@@ -66,7 +66,7 @@ def test_translations_keep_their_placeholders():
 
 def test_no_finnish_is_left_outside_the_catalog():
     finnish = re.compile(r"[äöÄÖ]")
-    for path in [*PACKAGE.glob("*.py"), *(PACKAGE / "templates").glob("*.html"), *(PACKAGE / "static").glob("*.js")]:
+    for path in [*PACKAGE.glob("*.py"), *(PACKAGE / "templates").glob("*.html"), *(PACKAGE / "static").glob("*.js"), *(PACKAGE / "static").glob("*.css")]:
         if path.name != "locale_fi.py":
             assert not finnish.search(path.read_text()), path.name
 
