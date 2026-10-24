@@ -6,6 +6,18 @@ on:
   pull_request:
 
 jobs:
+  ruff-and-ty:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.14"
+      - run: uv sync --locked --all-groups
+      - name: Ruff
+        run: uvx ruff@0.17.2 check --output-format=github .
+      - name: ty
+        run: uvx ty@0.0.91 check --output-format=github --python .venv .
   pytest:
     runs-on: ubuntu-latest
     strategy:
