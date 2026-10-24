@@ -57,4 +57,4 @@ def dhash(pixels: np.ndarray) -> str:
 
 def distance(a: str, b: str) -> int:
     """Hamming distance between two hex hashes of the same length."""
-    return bin(int(a, 16) ^ int(b, 16)).count("1")
+    return (int(a, 16) ^ int(b, 16)).bit_count()

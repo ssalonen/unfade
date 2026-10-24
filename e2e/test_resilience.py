@@ -8,9 +8,9 @@ from datetime import datetime
 
 import pytest
 
+from e2e import immich_harness as harness
 from unfade import archive, immich, jobs
 from unfade.__main__ import main
-from e2e import immich_harness as harness
 
 
 @pytest.fixture

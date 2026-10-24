@@ -61,7 +61,7 @@ class FakeImmich:
     def __init__(self):
         self.originals = {f"0000000{n}-0000-4000-8000-000000000000": jpeg(color) for n, color in enumerate(((100, 90, 80), (90, 100, 80)), 1)}
         ids = list(self.originals)
-        self.assets = [{"id": asset_id, "type": "IMAGE", "originalFileName": f"D{n}.jpg", "originalPath": f"/photos/vanhat/D{n}.jpg",
+        self.assets: list[dict] = [{"id": asset_id, "type": "IMAGE", "originalFileName": f"D{n}.jpg", "originalPath": f"/photos/vanhat/D{n}.jpg",
                         "checksum": base64.b64encode(hashlib.sha1(self.originals[asset_id]).digest()).decode(),
                         "fileCreatedAt": "1975-06-01T12:00:00.000Z", "isTrashed": False}
                        for n, asset_id in enumerate(ids, 1)]
@@ -155,8 +155,10 @@ class FakeImmich:
             asset_id = f"new-{len(self.uploads)}"
             self.by_content[hashlib.sha1(content).hexdigest()] = asset_id
             self.contents.append(content)
+            filename = re.search(rb'name="assetData"; filename="([^"]+)"', request.content)
+            assert filename is not None
             self.uploads.append({"id": asset_id, "fileCreatedAt": fields[b"fileCreatedAt"].decode(),
-                                 "filename": re.search(rb'name="assetData"; filename="([^"]+)"', request.content)[1].decode()})
+                                 "filename": filename[1].decode()})
             self.uploaded.append({"id": asset_id, "type": "IMAGE", "originalFileName": self.uploads[-1]["filename"],
                                   "originalPath": f"/upload/{self.uploads[-1]['filename']}", "checksum": "", "isTrashed": False})
             return httpx2.Response(201, json={"id": asset_id, "status": "created"})

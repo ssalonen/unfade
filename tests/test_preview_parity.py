@@ -59,6 +59,7 @@ def browser(corrected, original, adjustments):
         "original": base64.b64encode(rgba(original).tobytes()).decode(),
         "adjustments": adjustments,
     }
+    assert NODE is not None, "Node.js is not installed"
     done = subprocess.run([NODE, "-e", RUNNER, str(SCRIPT)], input=json.dumps(payload), capture_output=True, text=True, check=True)
     return [np.frombuffer(base64.b64decode(item), np.uint8).reshape(corrected.shape[:2] + (4,))[..., :3] for item in json.loads(done.stdout)]
 

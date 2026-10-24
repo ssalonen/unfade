@@ -2,13 +2,13 @@
 import json
 import subprocess
 import sys
-import xml.etree.ElementTree as ElementTree
+from xml.etree import ElementTree
 
 import pytest
 
+from tests.test_unfade import jpeg
 from unfade import archive, jobs, version
 from unfade.__main__ import main
-from tests.test_unfade import env, faded, jpeg, quick_retries  # noqa: F401  (fixtures and helpers)
 
 NS = {"rdf": "http://www.w3.org/1999/02/22-rdf-syntax-ns#", "dc": "http://purl.org/dc/elements/1.1/",
       "xmp": "http://ns.adobe.com/xap/1.0/", "digiKam": "http://www.digikam.org/ns/1.0/", "exif": "http://ns.adobe.com/exif/1.0/",
@@ -45,7 +45,7 @@ def test_local_archive_keeps_originals_records_copies_and_code(env, exported):
     assert archive.verify(str(target)) == []
     # code/recompute.py rebuilds the copy from the archive alone, pixel for pixel.
     check = subprocess.run([sys.executable, "-I", str(target / "code" / "recompute.py"), str(originals / "A001.jpg"),
-                            "--check", exported_record["target"]], capture_output=True, text=True)
+                            "--check", exported_record["target"]], check=False, capture_output=True, text=True)
     assert check.returncode == 0 and "same pixels" in check.stdout, check.stderr
 
 
@@ -104,16 +104,17 @@ def test_sidecar_carries_immich_metadata_people_and_copies():
     }
     root = ElementTree.fromstring(archive.sidecar(record).decode().split("?>", 1)[1].rsplit("<?xpacket", 1)[0])
     description = root.find(".//rdf:Description", NS)
-    assert description.find("dc:description/rdf:Alt/rdf:li", NS).text == "Mökillä"
+    assert description is not None
+    assert description.findtext("dc:description/rdf:Alt/rdf:li", namespaces=NS) == "Mökillä"
     assert [li.text for li in description.findall("digiKam:TagsList/rdf:Seq/rdf:li", NS)] == ["Kuvat/K001", "Mökki"]
-    assert description.find("xmp:Rating", NS).text == "4"
-    assert description.find("exif:DateTimeOriginal", NS).text == "1975-06-01T14:30:00.000+02:00"
-    assert description.find("exif:GPSLongitude", NS).text == "23,48.000000W"
+    assert description.findtext("xmp:Rating", namespaces=NS) == "4"
+    assert description.findtext("exif:DateTimeOriginal", namespaces=NS) == "1975-06-01T14:30:00.000+02:00"
+    assert description.findtext("exif:GPSLongitude", namespaces=NS) == "23,48.000000W"
     # Only named people become regions; the area is the box's centre and size, normalised.
     [region] = description.findall(".//mwg-rs:RegionList/rdf:Bag/rdf:li", NS)
-    assert region.find("mwg-rs:Name", NS).text == "Mummo"
-    assert [region.find(f"mwg-rs:Area/stArea:{key}", NS).text for key in "xywh"] == ["0.291667", "0.328125", "0.166667", "0.281250"]
+    assert region.findtext("mwg-rs:Name", namespaces=NS) == "Mummo"
+    assert [region.findtext(f"mwg-rs:Area/stArea:{key}", namespaces=NS) for key in "xywh"] == ["0.291667", "0.328125", "0.166667", "0.281250"]
     assert [li.text for li in description.findall("ca:Albums/rdf:Bag/rdf:li", NS)] == ["Kesä & meri"]
     [copy] = description.findall("ca:Copies/rdf:Bag/rdf:li", NS)
-    assert copy.find("ca:CodeVersion", NS).text == "0123456789abcdef" and json.loads(copy.find("ca:Recipe", NS).text)["method"] == "fade"
-    assert description.find("xmpMM:DocumentID", NS).text == "uuid:11111111-1111-4111-8111-111111111111"
+    assert copy.findtext("ca:CodeVersion", namespaces=NS) == "0123456789abcdef" and json.loads(copy.findtext("ca:Recipe", default="", namespaces=NS))["method"] == "fade"
+    assert description.findtext("xmpMM:DocumentID", namespaces=NS) == "uuid:11111111-1111-4111-8111-111111111111"

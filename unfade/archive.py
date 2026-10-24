@@ -25,7 +25,7 @@ import io
 import json
 import os
 import shutil
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from xml.sax.saxutils import escape
 
@@ -45,7 +45,7 @@ class ArchiveError(Exception):
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+    return datetime.now(UTC).isoformat(timespec="seconds")
 
 
 def _sha256(path: Path) -> str:
@@ -72,7 +72,7 @@ class Archive:
         self.root = root
         self.manifest_path = root / "manifest.json"
         if self.manifest_path.is_file():
-            self.manifest = json.loads(self.manifest_path.read_text(encoding="utf-8"))
+            self.manifest: dict = json.loads(self.manifest_path.read_text(encoding="utf-8"))
             if self.manifest.get("format") != FORMAT:
                 raise ArchiveError(t("{root} is not an unfade archive ({format})", root=root, format=self.manifest.get('format')))
         elif root.exists() and any(root.iterdir()):
@@ -285,7 +285,7 @@ def _immich_details(client: immich.Immich, asset_id: str, shared: set[str]) -> d
             "archived": asset.get("visibility") == "archive", "shared": asset_id in shared or any(album.get("hasSharedLink") for album in albums)}
 
 
-def _archive_items(archive: "Archive", source: dict, client, shared: set[str], copies_in_source: dict[str, set[str]],
+def _archive_items(archive: Archive, source: dict, client, shared: set[str], copies_in_source: dict[str, set[str]],
                    local_copies: dict[str, list[dict]], originals: list[dict], counts: dict, codes: dict, progress) -> None:
     """Archive each original in turn; the manifest is saved every so often, so an interrupted run loses little."""
     root = archive.root
@@ -303,7 +303,7 @@ def _archive_items(archive: "Archive", source: dict, client, shared: set[str], c
         entry, added = archive.add_original(path, item["name"], sha256)
         counts["added" if added else "unchanged"] += 1
         record_path = root / "originals" / (entry["name"] + ".json")
-        record = json.loads(record_path.read_text(encoding="utf-8")) if record_path.is_file() else {"format": FORMAT, "archived": entry["archived"]}
+        record: dict = json.loads(record_path.read_text(encoding="utf-8")) if record_path.is_file() else {"format": FORMAT, "archived": entry["archived"]}
         stored, orientation, _ = render.decode(path)
         pixel_sha256, pixel_format = render.pixel_digest(stored)
         upright = render.upright(stored, orientation)

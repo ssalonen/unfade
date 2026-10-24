@@ -10,7 +10,7 @@ import base64
 import hashlib
 import os
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import httpx2
 
@@ -163,12 +163,12 @@ class Immich:
 
     def upload(self, filename: str, content: bytes, created: str | None = None) -> dict:
         """Upload one file; returns {"id", "status"}, where status is "created" or "duplicate"."""
-        when = created or datetime.now(timezone.utc).isoformat()
+        when = created or datetime.now(UTC).isoformat()
         data = {
             "deviceAssetId": f"unfade-{filename}-{len(content)}",
             "deviceId": "unfade",
             "fileCreatedAt": when,
-            "fileModifiedAt": datetime.now(timezone.utc).isoformat(),
+            "fileModifiedAt": datetime.now(UTC).isoformat(),
             "isFavorite": "false",
         }
         return self._call("POST", "/assets", data=data, files={"assetData": (filename, content)}).json()

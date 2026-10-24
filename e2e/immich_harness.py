@@ -18,7 +18,7 @@ import tempfile
 import threading
 import time
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import httpx2
@@ -33,7 +33,7 @@ ADMIN_PASSWORD = os.environ.get("UNFADE_E2E_ADMIN_PASSWORD", "unfade-e2e-admin")
 def docker_available() -> bool:
     if not shutil.which("docker"):
         return False
-    return subprocess.run(["docker", "info"], capture_output=True).returncode == 0
+    return subprocess.run(["docker", "info"], check=False, capture_output=True).returncode == 0
 
 
 def _free_port() -> int:
@@ -57,7 +57,7 @@ class ImmichServer:
             override.write_text(f"services:\n  immich-server:\n    image: ghcr.io/immich-app/immich-server:{os.environ['IMMICH_VERSION']}\n")
             files += ["-f", str(override)]
         return subprocess.run(["docker", "compose", *files, "-p", self.project, *args],
-                              env=env, capture_output=True, text=True, timeout=timeout)
+                              env=env, check=False, capture_output=True, text=True, timeout=timeout)
 
     def start(self) -> None:
         # A registry that is busy or rate-limits (429 "toomanyrequests") fails a pull outright;
@@ -172,7 +172,7 @@ def faded_photo(seed: int, cast=(1.0, 0.78, 0.6), size=(480, 320), taken: dateti
 
 
 def upload(api: httpx2.Client, name: str, content: bytes) -> str:
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     response = api.post("/assets", files={"assetData": (name, content)},
                         data={"deviceAssetId": f"e2e-{name}", "deviceId": "unfade-e2e", "fileCreatedAt": now, "fileModifiedAt": now})
     response.raise_for_status()
@@ -238,8 +238,8 @@ class ChaosProxy:
         # shutdown() wakes the other pipe thread blocked in recv(); close() alone would leave the
         # socket open under it and the client waiting for its read timeout.
         for sock in sockets:
-            for step in (lambda: sock.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("ii", 1, 0)),
-                         lambda: sock.shutdown(socket.SHUT_RDWR), sock.close):
+            for step in (lambda sock=sock: sock.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("ii", 1, 0)),
+                         lambda sock=sock: sock.shutdown(socket.SHUT_RDWR), sock.close):
                 try:
                     step()
                 except OSError:

@@ -27,7 +27,7 @@ def visual_metrics(image: Image.Image) -> tuple[float, float]:
     return (red + green + blue) / 3, max(red, green, blue) - min(red, green, blue)
 
 
-def outlier_buckets(metrics: dict[str, tuple[float, float]], groups) -> dict[str, str]:
+def outlier_buckets[K](metrics: dict[K, tuple[float, float]], groups) -> dict[K, str]:
     """Within each group of at least five, label only strong brightness or colour outliers."""
     buckets = {}
     for members in groups:

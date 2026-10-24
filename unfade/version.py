@@ -65,7 +65,7 @@ def snapshot(code: dict, target: Path) -> bool:
                 shutil.copy2(ROOT / name, staging / name)
     elif code.get("commit"):
         for name in CODE_FILES:
-            content = subprocess.run(["git", "-C", str(ROOT), "show", f"{code['commit']}:{name}"], capture_output=True)
+            content = subprocess.run(["git", "-C", str(ROOT), "show", f"{code['commit']}:{name}"], check=False, capture_output=True)
             if content.returncode == 0:
                 (staging / name).parent.mkdir(parents=True, exist_ok=True)
                 (staging / name).write_bytes(content.stdout)

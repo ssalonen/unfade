@@ -12,21 +12,20 @@ upload of changed settings is a new asset.
 """
 from __future__ import annotations
 
+import contextvars
 import hashlib
 import json
 import os
 import re
 import secrets
-import contextvars
 import threading
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from unfade import color_methods
+from unfade import color_methods, fingerprint, immich, locations, render
 from unfade.grouping import file_hash, outlier_buckets, visual_metrics
-from unfade import fingerprint, immich, locations, render
 from unfade.i18n import N_, t
 
 _lock = threading.RLock()
@@ -48,7 +47,7 @@ def _path(job_id: str) -> Path:
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+    return datetime.now(UTC).isoformat(timespec="seconds")
 
 
 def save(job: dict) -> None:
@@ -167,11 +166,11 @@ def save_grouping(job_id: str, payload: dict, expected_revision: str) -> None:
     assignments from the card id (the image's index, zero-padded) to a group key.
     """
     if not isinstance(payload, dict) or not isinstance(payload.get("groups"), list) or not isinstance(payload.get("assignments"), dict):
-        raise ValueError(t("Invalid group change"))
+        raise ValueError(t("Invalid group change"))  # noqa: TRY004 - invalid form data uses ValueError
     labels = {}
     for entry in payload["groups"]:
         if not isinstance(entry, dict) or not isinstance(entry.get("key"), str) or not isinstance(entry.get("label"), str):
-            raise ValueError(t("Invalid group"))
+            raise ValueError(t("Invalid group"))  # noqa: TRY004 - keep the form validation error contract
         key, label = entry["key"], entry["label"].strip()
         if not (re.fullmatch(r"g-[1-9]\d*|new-[A-Za-z0-9_-]+", key) and label and len(label) <= 100) or key in labels:
             raise ValueError(t("Invalid group id or name"))
@@ -335,7 +334,7 @@ def _copy_metadata(recipe: dict, sha256: str) -> dict:
 
 def _local_time(instant: str, zone: str | None) -> str:
     """An Immich UTC timestamp written in the asset's own time zone, so the offset carries the zone."""
-    moment = datetime.fromisoformat(instant.replace("Z", "+00:00"))
+    moment = datetime.fromisoformat(instant)
     offset = re.fullmatch(r"UTC([+-])(\d{1,2})(?::?(\d{2}))?", zone or "")
     if offset:
         sign = 1 if offset[1] == "+" else -1
@@ -453,7 +452,7 @@ def run_export(job_id: str, force: bool = False, progress=None, only_approved: b
         source_client = immich.client() if job["source"]["kind"] != "local" else None
         tag_id = client.ensure_tag(destination["tag"])["id"] if client and destination.get("tag") else None
     except immich.ImmichError as failure:
-        return _update(job_id, lambda job: job["export"].update(state="failed", finished=_now(), errors=[str(failure)]))
+        return _update(job_id, lambda job, failure=failure: job["export"].update(state="failed", finished=_now(), errors=[str(failure)]))
     warnings: list[str] = []
     metadata = {"supported": True}
 
@@ -488,7 +487,8 @@ def run_export(job_id: str, force: bool = False, progress=None, only_approved: b
             else:
                 origin.update(path=str(Path(entry["folder"]) / entry["name"]), immich_asset=entry["key"])
                 # The original keeps one UUID in Immich's metadata; its file is not touched.
-                source_uuid = remember(lambda: _original_uuid(source_client, entry["key"]))
+                assert source_client is not None
+                source_uuid = remember(lambda entry=entry: _original_uuid(source_client, entry["key"]))
                 if source_uuid:
                     origin["uuid"] = source_uuid
             # An upload cut off earlier reuses its UUID: the same bytes come back from Immich as a
@@ -497,7 +497,7 @@ def run_export(job_id: str, force: bool = False, progress=None, only_approved: b
             content, suffix, recipe = render.corrected_file(path, method_of(job, entry), entry["adjustments"], destination.get("format", "jxl"),
                                                             origin, pending["uuid"] if pending else None)
             if client and not pending:
-                _update(job_id, lambda job, index=index, uuid=recipe["uuid"]: job["items"][index].update(pending={"uuid": uuid, "signature": signature}))
+                _update(job_id, lambda job, index=index, uuid=recipe["uuid"], signature=signature: job["items"][index].update(pending={"uuid": uuid, "signature": signature}))
             name = stems[index] + suffix
             copy_sha256 = hashlib.sha256(content).hexdigest()
             if client:
@@ -507,7 +507,7 @@ def run_export(job_id: str, force: bool = False, progress=None, only_approved: b
                 if destination.get("album_id"):
                     client.add_to_album(destination["album_id"], [uploaded["id"]])
                 target = uploaded["id"]
-                remember(lambda: client.set_metadata(target, METADATA_KEY, _copy_metadata(recipe, copy_sha256)))
+                remember(lambda target=target, recipe=recipe, copy_sha256=copy_sha256: client.set_metadata(target, METADATA_KEY, _copy_metadata(recipe, copy_sha256)))
                 previous = (entry["exported"] or {}).get("target")
                 previous = previous if previous and previous not in (target, entry["key"]) else None
                 # In replace mode an earlier copy has taken the original's place, and may since have
@@ -515,6 +515,7 @@ def run_export(job_id: str, force: bool = False, progress=None, only_approved: b
                 living = previous if destination.get("replace_original") and previous else entry["key"]
                 tag_ids = [tag_id] if tag_id else []
                 if destination.get("copy_details"):
+                    assert source_client is not None
                     problems, original_tags = _copy_details(source_client, client, living, target, destination.get("album_id"))
                     warnings.extend(f"{entry['name']}: {problem}" for problem in problems)
                     tag_ids += [found for found in original_tags if found not in tag_ids]
@@ -556,7 +557,7 @@ def run_export(job_id: str, force: bool = False, progress=None, only_approved: b
             written += 1
         except (OSError, ValueError, LookupError, MemoryError, immich.ImmichError) as failure:
             error = f"{entry['name']}: {t(str(failure))}"
-        except Exception as failure:  # an unforeseen bug must not leave the export "running" forever
+        except Exception as failure:  # noqa: BLE001 - record unforeseen bugs so the export can finish
             error = f"{entry['name']}: " + t("unexpected error {kind}: {failure}", kind=type(failure).__name__, failure=failure)
         finally:
             def step(job, index=index, record=record, error=error):

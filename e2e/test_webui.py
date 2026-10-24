@@ -11,9 +11,9 @@ from datetime import datetime
 import httpx2
 import pytest
 
-from unfade.__main__ import main
-from unfade import jobs
 from e2e import immich_harness as harness
+from unfade import jobs
+from unfade.__main__ import main
 
 playwright = pytest.importorskip("playwright.sync_api")
 
@@ -98,6 +98,7 @@ def unfade_server(library, tmp_path):
             time.sleep(0.2)
     else:
         process.kill()
+        assert process.stdout is not None
         raise RuntimeError(process.stdout.read())
     yield url
     process.terminate()

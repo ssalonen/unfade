@@ -8,14 +8,14 @@ import hashlib
 import json
 import subprocess
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import httpx2
 import pytest
 
+from e2e import immich_harness as harness
 from unfade import archive
 from unfade.__main__ import main
-from e2e import immich_harness as harness
 
 
 @pytest.fixture
@@ -64,7 +64,7 @@ def test_archive_after_stacking_keeps_originals_metadata_and_recipes(library, tm
     assert copy["sha256"] == hashlib.sha256(stored_copy).hexdigest() and copy["recipe"]["method"] == "fade"
     (tmp_path / "copy.jxl").write_bytes(stored_copy)
     check = subprocess.run([sys.executable, "-I", str(target / "code" / "recompute.py"), str(target / "originals" / "K001-0001.jpg"),
-                            "--check", str(tmp_path / "copy.jxl")], capture_output=True, text=True)
+                            "--check", str(tmp_path / "copy.jxl")], check=False, capture_output=True, text=True)
     assert check.returncode == 0 and "same pixels" in check.stdout, check.stderr
     assert archive.verify(str(target)) == []
     index = (target / "index.html").read_text(encoding="utf-8")
@@ -100,7 +100,7 @@ def test_immich_reads_the_archived_sidecar_back(library, tmp_path, immich_url, a
     try:
         fresh = harness.new_account(immich_url, admin).client()
         original = target / "originals" / "K001-0001.jpg"
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         uploaded = fresh.post("/assets", data={"deviceAssetId": "archive", "deviceId": "archive", "fileCreatedAt": now, "fileModifiedAt": now},
                               files={"assetData": (original.name, original.read_bytes()),
                                      "sidecarData": (original.name + ".xmp", (target / "originals" / "K001-0001.jpg.xmp").read_bytes())})
