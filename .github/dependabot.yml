@@ -6,6 +6,8 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 7
     groups:
       python:
         patterns: ["*"]
@@ -14,6 +16,8 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 7
     groups:
       actions:
         patterns: ["*"]
@@ -25,5 +29,7 @@ updates:
     directory: /e2e
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 7
     allow:
       - dependency-name: ghcr.io/immich-app/immich-server
