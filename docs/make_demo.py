@@ -55,7 +55,7 @@ def frame(page, frames: list, duration: int, *selectors: str) -> None:
         bottom = max(box["y"] + box["height"] for box in boxes) + 12
         clip = {"x": left, "y": top, "width": right - left, "height": bottom - top}
     shot = Image.open(io.BytesIO(page.screenshot(clip=clip))).convert("RGB")
-    shot.thumbnail(OUT, Image.LANCZOS)
+    shot.thumbnail(OUT, Image.Resampling.LANCZOS)
     canvas = Image.new("RGB", OUT, BACKGROUND)
     canvas.paste(shot, ((OUT[0] - shot.width) // 2, (OUT[1] - shot.height) // 2))
     frames.append((canvas, duration))

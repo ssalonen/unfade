@@ -6,7 +6,6 @@ import httpx2
 import pytest
 
 from unfade import archive, immich, jobs
-from tests.test_unfade import FakeImmich, env, fake_immich, quick_retries  # noqa: F401  (fixtures)
 
 
 class Flaky:

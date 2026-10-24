@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 from fastapi import FastAPI, Form, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
@@ -28,7 +29,11 @@ def asset_version() -> str:
     return format(newest, "x")
 
 
-TEMPLATES.env.globals.update(asset_version=asset_version, t=t, label=i18n.label, languages=i18n.LANGUAGE_NAMES, script_texts=i18n.script_texts)
+TEMPLATE_GLOBALS: dict[str, Any] = {
+    "asset_version": asset_version, "t": t, "label": i18n.label,
+    "languages": i18n.LANGUAGE_NAMES, "script_texts": i18n.script_texts,
+}
+TEMPLATES.env.globals.update(TEMPLATE_GLOBALS)
 LANGUAGE_COOKIE = "unfade-lang"
 
 

@@ -9,7 +9,6 @@ from fastapi.testclient import TestClient
 from unfade import color_methods, i18n, locations
 from unfade.locale_fi import FI
 from unfade.web import create_app
-from tests.test_unfade import env, quick_retries  # noqa: F401  (fixtures)
 
 PACKAGE = Path(__file__).resolve().parents[1] / "unfade"
 # Raised in English by the modules that decide a copy's pixels (they stay free of i18n so the

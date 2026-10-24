@@ -10,9 +10,9 @@ import imagecodecs
 import numpy as np
 import pytest
 
+from e2e import immich_harness as harness
 from unfade import color_methods, encode, jobs, render
 from unfade.__main__ import main
-from e2e import immich_harness as harness
 
 DETAILS = {"description": "Mökillä", "rating": 4, "isFavorite": True, "latitude": 61.5, "longitude": 23.8,
            "dateTimeOriginal": "1975-06-01T14:30:00.000+02:00"}

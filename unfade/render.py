@@ -68,13 +68,13 @@ def decode(path: Path) -> tuple[np.ndarray, int, dict]:
         meta = {
             "icc": image.info.get("icc_profile"),
             "xmp": image.info.get("xmp") or image.info.get("XML:com.adobe.xmp")
-            or (image.tag_v2.get(XMP_TAG) if hasattr(image, "tag_v2") else None),
+            or getattr(image, "tag_v2", {}).get(XMP_TAG),
         }
         pixels = None
         if path.suffix.lower() in DEEP_SUFFIXES:
             try:
                 pixels = imagecodecs.imread(str(path))
-            except Exception:  # imagecodecs raises codec-specific errors; Pillow below is the fallback
+            except Exception:  # noqa: BLE001 - codec-specific failures fall back to Pillow
                 pixels = None
         if pixels is None:
             pixels = np.asarray(image.convert("RGB"))

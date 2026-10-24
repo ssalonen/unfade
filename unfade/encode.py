@@ -86,9 +86,9 @@ def recipe_xmp(recipe: dict, source_xmp: bytes | None = None) -> bytes:
     text = source_xmp.decode("utf-8", "replace").strip("\x00") if source_xmp else ""
     if "</rdf:RDF>" in text:
         # A source that is itself a unfade copy: its old recipe and DerivedFrom give way to the new.
-        text = re.sub(r"<rdf:Description[^>]*xmlns:unfade=.*?</rdf:Description>", "", text, flags=re.S)
+        text = re.sub(r"<rdf:Description[^>]*xmlns:unfade=.*?</rdf:Description>", "", text, flags=re.DOTALL)
         # The copy is a new document: the source's identity moves into DerivedFrom and SourceDocumentID.
-        text = re.sub(r"<xmpMM:(DocumentID|InstanceID|OriginalDocumentID)>.*?</xmpMM:\1>|<xmpMM:DerivedFrom\b.*?(?:/>|</xmpMM:DerivedFrom>)", "", text, flags=re.S)
+        text = re.sub(r"<xmpMM:(DocumentID|InstanceID|OriginalDocumentID)>.*?</xmpMM:\1>|<xmpMM:DerivedFrom\b.*?(?:/>|</xmpMM:DerivedFrom>)", "", text, flags=re.DOTALL)
         text = re.sub(r'\s+xmpMM:(DocumentID|InstanceID|OriginalDocumentID)="[^"]*"', "", text)
         packet = text.replace("</rdf:RDF>", description + "</rdf:RDF>", 1)
     else:
@@ -109,7 +109,7 @@ def document_id(xmp: bytes | None) -> str:
 def read_recipe(xmp: bytes) -> dict:
     """The recipe fields of an XMP packet written by recipe_xmp(), with its DocumentID."""
     text = xmp.decode("utf-8", "replace")
-    found = dict(re.findall(r"<unfade:(\w+)>(.*?)</unfade:\1>", text, flags=re.S))
+    found = dict(re.findall(r"<unfade:(\w+)>(.*?)</unfade:\1>", text, flags=re.DOTALL))
     found["DocumentID"] = document_id(xmp)
     found = {key: unescape(value) for key, value in found.items()}
     for key in ("Curve", "Adjustments"):
@@ -131,7 +131,7 @@ def _box(kind: bytes, payload: bytes) -> bytes:
 def jxl(pixels: np.ndarray, exif: bytes | None, xmp: bytes | None) -> bytes:
     """Lossless JPEG XL in a container, with `Exif` and `xml ` boxes before the codestream."""
     # Effort 3: higher efforts took several times longer on film grain for under 2 % smaller files.
-    stream = imagecodecs.jpegxl_encode(pixels, lossless=True, effort=3, usecontainer=True)
+    stream = bytes(imagecodecs.jpegxl_encode(pixels, lossless=True, effort=3, usecontainer=True))
     extra = b""
     tiff = _tiff_exif(exif)
     if tiff:
@@ -155,7 +155,7 @@ def _chunk(kind: bytes, payload: bytes) -> bytes:
 
 def png(pixels: np.ndarray, icc: bytes | None, exif: bytes | None, xmp: bytes | None) -> bytes:
     """Lossless PNG with iCCP, eXIf and XMP (iTXt) chunks right after the header."""
-    stream = imagecodecs.png_encode(pixels)
+    stream = bytes(imagecodecs.png_encode(pixels))
     extra = b""
     if icc:
         extra += _chunk(b"iCCP", b"ICC Profile\x00\x00" + zlib.compress(icc))
