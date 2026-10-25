@@ -28,6 +28,8 @@ unfade = "unfade.__main__:main"
 [dependency-groups]
 dev = [
   "pytest>=9,<10",
+  "ruff==0.17.2",
+  "ty==0.0.91",
 ]
 # End-to-end tests against a throwaway Immich (uv run --group e2e pytest e2e).
 e2e = [
