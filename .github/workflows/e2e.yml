@@ -22,7 +22,7 @@ jobs:
       - uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.14"
-      - run: uv sync --locked --group e2e
+      - run: uv sync --locked --all-groups
       - run: uv run --group e2e playwright install --with-deps chromium
       - run: uv run --group e2e pytest -v e2e
       - if: always()
